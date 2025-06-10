@@ -23,13 +23,14 @@ namespace BackendAnticipos.Controllers.Auth
                 return BadRequest(new { success = false, message = "Datos de login incompletos." });
             }
 
-            var (isValid, rol) = await _authService.ValidarUsuarioAsync(request.Username, request.Password);
+            var (isValid, rol, idUsuario) = await _authService.ValidarUsuarioAsync(request.Username, request.Password);
 
             if (isValid)
             {
                 return Ok(new
                 {
                     success = true,
+                    id_usuario = idUsuario,
                     username = request.Username,
                     rol = rol
                 });

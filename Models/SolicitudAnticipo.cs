@@ -7,6 +7,7 @@ namespace BackendAnticipos.Models
     public class SolicitudAnticipo
     {
         public int IdAnticipo { get; set; }
+        public int IdSolicitante { get; set; }
         public string Solicitante { get; set; }
         public int AprobadorId { get; set; }
         public string CorreoAprobador { get; set; }
@@ -18,6 +19,7 @@ namespace BackendAnticipos.Models
         public decimal? Pagado { get; set; }
         public string? SoporteNombre { get; set; }
         public DateTime FechaSolicitud { get; set; }
+        public DateTime? FechaAprobacion { get; set; }
         public string? Estado { get; set; }
         public string? ApropVP { get; set; }
         public string? VP { get; set; }

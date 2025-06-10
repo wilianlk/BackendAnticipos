@@ -18,10 +18,10 @@ namespace BackendAnticipos.Services.Auth
         }
 
         // Método para validar login (usuario y rol)
-        public async Task<(bool IsValid, string Rol)> ValidarUsuarioAsync(string username, string password)
+        public async Task<(bool IsValid, string Rol, int? IdUsuario)> ValidarUsuarioAsync(string username, string password)
         {
             const string sql = @"
-                SELECT r.nombre_rol
+                SELECT u.id_usuario,r.nombre_rol
                 FROM usuarios_anticipo u
                 JOIN roles_anticipos r ON u.id_rol = r.id_rol
                 WHERE TRIM(u.usuario) = @Username AND TRIM(u.clave) = @Password";
@@ -39,21 +39,21 @@ namespace BackendAnticipos.Services.Auth
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
+                    var idUsuario = Convert.ToInt32(reader["id_usuario"]);
                     var rol = reader["nombre_rol"]?.ToString().Trim();
 
-                    // AJUSTE: Normaliza el nombre del rol para que sea igual que espera el frontend
                     if (!string.IsNullOrEmpty(rol))
                         rol = char.ToUpper(rol[0]) + rol.Substring(1).ToLower();
 
-                    return (true, rol);
+                    return (true, rol, idUsuario);
                 }
 
-                return (false, null);
+                return (false, null, null);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error al validar usuario: {ex.Message}");
-                return (false, null);
+                return (false, null, null);
             }
         }
 

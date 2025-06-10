@@ -205,13 +205,13 @@ namespace BackendAnticipos.Controllers
         }
 
         [HttpGet("ConsultaAnticipo")]
-        public async Task<IActionResult> ConsultaAnticipo()
+        public async Task<IActionResult> ConsultaAnticipo([FromQuery] int idUsuario)
         {
             _logger.LogInformation("Iniciando consulta de anticipos...");
 
             try
             {
-                var resultados = await _informixService.ConsultarAnticiposAsync();
+                var resultados = await _informixService.ConsultarAnticiposAsync(idUsuario);
 
                 if (resultados == null || resultados.Count == 0)
                 {
@@ -535,6 +535,7 @@ namespace BackendAnticipos.Controllers
                 return StatusCode(500, new { success = false, message = "Error interno al consultar solicitado vs pagado." });
             }
         }
+
         private async Task EnviarCorreoAsync(SolicitudAnticipo dto, string rootPath, List<string> destinatarios)
         {
             try

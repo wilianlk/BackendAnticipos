@@ -49,6 +49,7 @@ namespace BackendAnticipos.Services
         {
             const string sql = @"
             INSERT INTO anticipos_solicitados (
+                id_solicitante,
                 solicitante,
                 aprobador_id,
                 correo_aprobador,
@@ -59,6 +60,7 @@ namespace BackendAnticipos.Services
                 soporte_nombre,
                 vp
             ) VALUES (
+                @IdSolicitante,
                 @Solicitante,
                 @AprobadorId,
                 @CorreoAprobador,
@@ -79,6 +81,7 @@ namespace BackendAnticipos.Services
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
 
+            cmd.Parameters.Add(new DB2Parameter("@IdSolicitante", DB2Type.Integer) { Value = dto.IdSolicitante });
             cmd.Parameters.Add(new DB2Parameter("@Solicitante", DB2Type.VarChar) { Value = dto.Solicitante });
             cmd.Parameters.Add(new DB2Parameter("@AprobadorId", DB2Type.Integer) { Value = dto.AprobadorId });
             cmd.Parameters.Add(new DB2Parameter("@CorreoAprobador", DB2Type.VarChar) { Value = dto.CorreoAprobador });
@@ -103,7 +106,9 @@ namespace BackendAnticipos.Services
         {
             const string sql = @"
             UPDATE anticipos_solicitados
-            SET estado = 'VALIDANDO RETENCION'
+            SET estado = 'VALIDANDO RETENCION',
+            aprop_vp = 'APROBADO',
+            fecha_aprobacion = CURRENT
             WHERE id_anticipo = @IdAnticipo";
 
             using var conn = new DB2Connection(_connectionString);
@@ -116,7 +121,7 @@ namespace BackendAnticipos.Services
             var result = await cmd.ExecuteNonQueryAsync();
             return result > 0;
         }
-        public async Task<List<SolicitudAnticipo>> ConsultarAnticiposAsync()
+        public async Task<List<SolicitudAnticipo>> ConsultarAnticiposAsync(int idUsuario)
         {
             var lista = new List<SolicitudAnticipo>();
 
@@ -134,6 +139,7 @@ namespace BackendAnticipos.Services
                 fecha_solicitud,
                 estado
             FROM anticipos_solicitados
+            WHERE id_solicitante = @IdUsuario
             ORDER BY fecha_solicitud DESC";
 
             using var conn = new DB2Connection(_connectionString);
@@ -141,6 +147,7 @@ namespace BackendAnticipos.Services
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -246,7 +253,8 @@ namespace BackendAnticipos.Services
                 quien_legaliza,
                 retencion_fuente,
                 retencion_iva,
-                retencion_ica
+                retencion_ica,
+                fecha_aprobacion
             FROM anticipos_solicitados
             WHERE TRIM(estado) = 'VALIDANDO RETENCION'
             ORDER BY fecha_solicitud DESC";
@@ -280,7 +288,8 @@ namespace BackendAnticipos.Services
                     QuienLegaliza = reader.IsDBNull(15) ? null : reader.GetString(15).Trim(),
                     RetencionFuente = reader.IsDBNull(16) ? null : reader.GetDecimal(16),
                     RetencionIva = reader.IsDBNull(17) ? null : reader.GetDecimal(17),
-                    RetencionIca = reader.IsDBNull(18) ? null : reader.GetDecimal(18)
+                    RetencionIca = reader.IsDBNull(18) ? null : reader.GetDecimal(18),
+                    FechaAprobacion = reader.IsDBNull(19) ? null : reader.GetDateTime(19),
                 });
             }
 
