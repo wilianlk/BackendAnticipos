@@ -18,6 +18,7 @@ namespace BackendAnticipos.Models
         public decimal ValorAPagar { get; set; }         
         public decimal? Pagado { get; set; }
         public string? SoporteNombre { get; set; }
+        public string? SoportePagoNombre { get; set; }
         public DateTime FechaSolicitud { get; set; }
         public DateTime? FechaAprobacion { get; set; }
         public string? Estado { get; set; }

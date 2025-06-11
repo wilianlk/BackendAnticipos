@@ -4,5 +4,6 @@
     {
         public int IdAnticipo { get; set; }
         public bool Legalizado { get; set; }
+        public string QuienLegaliza { get; set; }
     }
 }

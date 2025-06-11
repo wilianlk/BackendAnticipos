@@ -370,43 +370,50 @@ namespace BackendAnticipos.Controllers
         }
 
         [HttpPost("registrar-pago")]
-        public async Task<IActionResult> RegistrarPago([FromBody] RegistrarPagoDTO dto)
+        public async Task<IActionResult> RegistrarPago([FromForm] RegistrarPagoFormDto dto)
         {
             try
             {
-                if (dto == null || dto.IdAnticipo <= 0)
-                    return BadRequest(new { success = false, message = "Datos inválidos." });
+                _logger.LogInformation("Iniciando registro de pago para anticipo {IdAnticipo}", dto.IdAnticipo);
 
-                var ok = await _informixService.RegistrarPagoAsync(dto.IdAnticipo, dto.Pagado);
+                string? soportePagoNombre = null;
 
-                if (ok)
+                if (dto.SoportePago != null && dto.SoportePago.Length > 0)
                 {
-                    var anticipo = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(dto.IdAnticipo);
+                    var ext = Path.GetExtension(dto.SoportePago.FileName);
+                    var fileName = $"{Guid.NewGuid()}{ext}";
+                    var dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "SoportesPagos");
+                    dir = Path.GetFullPath(dir);
+                    Directory.CreateDirectory(dir);
+                    var pathFisica = Path.Combine(dir, fileName);
+                    await using var fs = new FileStream(pathFisica, FileMode.Create);
+                    await dto.SoportePago.CopyToAsync(fs);
+                    soportePagoNombre = Path.Combine("SoportesPagos", fileName);
 
-                    if (anticipo.Estado == "PAGADO / PENDIENTE POR LEGALIZAR")
-                    {
-                        var destinatarios = new List<string>
-                        {
-                           "wlucumi@recamier.com",""
-                        };
-
-                        await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
-                        _logger.LogInformation("Correo de notificación enviado para estado 'PAGADO / PENDIENTE POR LEGALIZAR'.");
-                    }
-
-                    _logger.LogInformation($"Pago registrado para anticipos {dto.IdAnticipo}.");
-                    return Ok(new { success = true, message = "Pago registrado correctamente." });
+                    _logger.LogInformation("Archivo de soporte de pago guardado en {Ruta}", soportePagoNombre);
                 }
                 else
                 {
-                    _logger.LogWarning($"No se encontró o no se pudo actualizar el anticipo {dto.IdAnticipo}.");
+                    _logger.LogInformation("No se recibió archivo de soporte de pago para el anticipo {IdAnticipo}", dto.IdAnticipo);
+                }
+
+                var ok = await _informixService.RegistrarPagoAsync(dto.IdAnticipo, dto.Pagado, soportePagoNombre);
+
+                if (ok)
+                {
+                    _logger.LogInformation("Pago registrado exitosamente para anticipo {IdAnticipo}", dto.IdAnticipo);
+                    return Ok(new { success = true, message = "Pago registrado correctamente.", soporte_pago = soportePagoNombre });
+                }
+                else
+                {
+                    _logger.LogWarning("No se encontró el anticipo {IdAnticipo} o no se pudo actualizar.", dto.IdAnticipo);
                     return NotFound(new { success = false, message = "No se encontró el anticipo o no se pudo actualizar." });
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error al registrar pago del anticipo {dto?.IdAnticipo}.");
-                return StatusCode(500, new { success = false, message = "Error interno al registrar pago." });
+                _logger.LogError(ex, "Error interno al registrar el pago para el anticipo {IdAnticipo}", dto?.IdAnticipo);
+                return StatusCode(500, new { success = false, message = "Error interno al registrar pago.", detalle = ex.Message });
             }
         }
 
@@ -456,13 +463,12 @@ namespace BackendAnticipos.Controllers
                 if (dto == null || dto.IdAnticipo == 0)
                     return BadRequest(new { success = false, message = "Datos inválidos" });
 
-                var actualizado = await _informixService.RegistrarLegalizacionAsync(dto.IdAnticipo, dto.Legalizado);
+                var actualizado = await _informixService.RegistrarLegalizacionAsync(dto.IdAnticipo, dto.Legalizado, dto.QuienLegaliza);
 
                 if (actualizado)
                 {
                     var anticipo = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(dto.IdAnticipo);
 
-                    // Solo enviar correo si el estado quedó en 'FINALIZADO'
                     if (anticipo.Estado == "FINALIZADO")
                     {
                         var destinatarios = new List<string>

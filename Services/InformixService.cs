@@ -128,6 +128,7 @@ namespace BackendAnticipos.Services
             const string sql = @"
             SELECT 
                 id_anticipo,
+                id_solicitante,
                 solicitante,
                 aprobador_id,
                 correo_aprobador,
@@ -135,9 +136,21 @@ namespace BackendAnticipos.Services
                 nit_proveedor,
                 concepto,
                 valor_anticipo,
+                valor_a_pagar,
+                pagado,
                 soporte_nombre,
+                soporte_pago_nombre, 
                 fecha_solicitud,
-                estado
+                fecha_aprobacion,
+                estado,
+                aprop_vp,
+                vp,
+                tiene_legalizacion,
+                quien_legaliza,
+                retencion_fuente,
+                retencion_iva,
+                retencion_ica,
+                motivo_rechazo
             FROM anticipos_solicitados
             WHERE id_solicitante = @IdUsuario
             ORDER BY fecha_solicitud DESC";
@@ -155,21 +168,33 @@ namespace BackendAnticipos.Services
                 var anticipo = new SolicitudAnticipo
                 {
                     IdAnticipo = reader.GetInt32(0),
-                    Solicitante = reader.GetString(1).Trim(),
-                    AprobadorId = reader.GetInt32(2),
-                    CorreoAprobador = reader.GetString(3).Trim(),
-                    Proveedor = reader.GetString(4).Trim(),
-                    NitProveedor = reader.GetString(5).Trim(),
-                    Concepto = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
-                    ValorAnticipo = reader.GetDecimal(7),
-                    SoporteNombre = reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
-                    FechaSolicitud = reader.GetDateTime(9),
-                    Estado = reader.IsDBNull(10) ? null : reader.GetString(10).Trim(),
+                    IdSolicitante = reader.GetInt32(1),
+                    Solicitante = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim(),
+                    AprobadorId = reader.GetInt32(3),
+                    CorreoAprobador = reader.IsDBNull(4) ? null : reader.GetString(4).Trim(),
+                    Proveedor = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    NitProveedor = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    Concepto = reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                    ValorAnticipo = reader.GetDecimal(8),
+                    ValorAPagar = reader.IsDBNull(9) ? 0 : reader.GetDecimal(9),
+                    Pagado = reader.IsDBNull(10) ? (decimal?)null : reader.GetDecimal(10),
+                    SoporteNombre = reader.IsDBNull(11) ? null : reader.GetString(11).Trim(),
+                    SoportePagoNombre = reader.IsDBNull(12) ? null : reader.GetString(12).Trim(),
+                    FechaSolicitud = reader.GetDateTime(13),
+                    FechaAprobacion = reader.IsDBNull(14) ? (DateTime?)null : reader.GetDateTime(14),
+                    Estado = reader.IsDBNull(15) ? null : reader.GetString(15).Trim(),
+                    ApropVP = reader.IsDBNull(16) ? null : reader.GetString(16).Trim(),
+                    VP = reader.IsDBNull(17) ? null : reader.GetString(17).Trim(),
+                    TieneLegalizacion = reader.IsDBNull(18) ? null : reader.GetString(18).Trim(),
+                    QuienLegaliza = reader.IsDBNull(19) ? null : reader.GetString(19).Trim(),
+                    RetencionFuente = reader.IsDBNull(20) ? (decimal?)null : reader.GetDecimal(20),
+                    RetencionIva = reader.IsDBNull(21) ? (decimal?)null : reader.GetDecimal(21),
+                    RetencionIca = reader.IsDBNull(22) ? (decimal?)null : reader.GetDecimal(22),
+                    MotivoRechazo = reader.IsDBNull(23) ? null : reader.GetString(23).Trim()
                 };
 
                 lista.Add(anticipo);
             }
-
 
             return lista;
         }
@@ -390,12 +415,13 @@ namespace BackendAnticipos.Services
 
             return lista;
         }
-        public async Task<bool> RegistrarPagoAsync(int idAnticipo, bool pagado)
+        public async Task<bool> RegistrarPagoAsync(int idAnticipo, bool pagado, string? soportePagoNombre)
         {
             const string sql = @"
             UPDATE anticipos_solicitados
             SET pagado = @Pagado,
-                estado = CASE WHEN @Pagado = 1 THEN 'PAGADO / PENDIENTE POR LEGALIZAR' ELSE estado END
+                estado = CASE WHEN @Pagado = 1 THEN 'PAGADO / PENDIENTE POR LEGALIZAR' ELSE estado END,
+                soporte_pago_nombre = @SoportePagoNombre
             WHERE id_anticipo = @IdAnticipo
             ";
 
@@ -405,6 +431,7 @@ namespace BackendAnticipos.Services
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             cmd.Parameters.Add(new DB2Parameter("@Pagado", DB2Type.SmallInt) { Value = pagado ? 1 : 0 });
+            cmd.Parameters.Add(new DB2Parameter("@SoportePagoNombre", DB2Type.VarChar) { Value = (object?)soportePagoNombre ?? DBNull.Value });
             cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
 
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
@@ -462,13 +489,14 @@ namespace BackendAnticipos.Services
 
             return lista;
         }
-        public async Task<bool> RegistrarLegalizacionAsync(int idAnticipo, bool legalizado)
+        public async Task<bool> RegistrarLegalizacionAsync(int idAnticipo, bool legalizado, string quienLegaliza)
         {
             const string sql = @"
             UPDATE anticipos_solicitados
             SET 
                 tiene_legalizacion = @Legalizado,
-                estado = CASE WHEN @Legalizado = 1 THEN 'FINALIZADO' ELSE estado END
+                estado = CASE WHEN @Legalizado = 1 THEN 'FINALIZADO' ELSE estado END,
+                quien_legaliza = @QuienLegaliza
             WHERE id_anticipo = @IdAnticipo
             ";
 
@@ -478,6 +506,7 @@ namespace BackendAnticipos.Services
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             cmd.Parameters.Add(new DB2Parameter("@Legalizado", DB2Type.SmallInt) { Value = legalizado ? 1 : 0 });
+            cmd.Parameters.Add(new DB2Parameter("@QuienLegaliza", DB2Type.Char) { Value = quienLegaliza ?? "" });
             cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
 
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
