@@ -1,5 +1,6 @@
 ﻿using BackendAnticipos.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace BackendAnticipos.Controllers.Auth
@@ -15,15 +16,16 @@ namespace BackendAnticipos.Controllers.Auth
             _authService = authService;
         }
 
+        // LOGIN SOLO POR CORREO (ahora retorna lista de roles)
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            if (request == null || string.IsNullOrWhiteSpace(request.Correo) || string.IsNullOrWhiteSpace(request.Password))
             {
                 return BadRequest(new { success = false, message = "Datos de login incompletos." });
             }
 
-            var (isValid, rol, idUsuario) = await _authService.ValidarUsuarioAsync(request.Username, request.Password);
+            var (isValid, roles, idUsuario, usuario) = await _authService.ValidarUsuarioAsync(request.Correo, request.Password);
 
             if (isValid)
             {
@@ -31,8 +33,9 @@ namespace BackendAnticipos.Controllers.Auth
                 {
                     success = true,
                     id_usuario = idUsuario,
-                    username = request.Username,
-                    rol = rol
+                    usuario = usuario,
+                    correo = request.Correo,
+                    roles = roles // ahora es lista
                 });
             }
             else
@@ -41,15 +44,25 @@ namespace BackendAnticipos.Controllers.Auth
             }
         }
 
+        // REGISTRO: usuario, correo, password, roles (lista)
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password) || string.IsNullOrWhiteSpace(request.Rol))
+            if (request == null ||
+                string.IsNullOrWhiteSpace(request.Usuario) ||
+                string.IsNullOrWhiteSpace(request.Correo) ||
+                string.IsNullOrWhiteSpace(request.Password) ||
+                request.Roles == null || request.Roles.Count == 0)
             {
                 return BadRequest(new { success = false, message = "Datos de registro incompletos." });
             }
 
-            var registrado = await _authService.RegistrarUsuarioAsync(request.Username, request.Password, request.Rol);
+            var registrado = await _authService.RegistrarUsuarioAsync(
+                request.Usuario,
+                request.Password,
+                request.Roles,
+                request.Correo
+            );
 
             if (registrado)
             {
@@ -57,21 +70,23 @@ namespace BackendAnticipos.Controllers.Auth
             }
             else
             {
-                return Conflict(new { success = false, message = "El usuario ya existe o el rol es inválido." });
+                return Conflict(new { success = false, message = "El usuario o correo ya existe, o uno de los roles es inválido." });
             }
         }
 
+        // DTOs internos del controlador (ajustados)
         public class LoginRequest
         {
-            public string Username { get; set; }
+            public string Correo { get; set; }
             public string Password { get; set; }
         }
 
         public class RegisterRequest
         {
-            public string Username { get; set; }
+            public string Usuario { get; set; }
+            public string Correo { get; set; }
             public string Password { get; set; }
-            public string Rol { get; set; }
+            public List<string> Roles { get; set; } // ahora es lista
         }
     }
 }

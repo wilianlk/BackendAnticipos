@@ -1,13 +1,19 @@
 ﻿using BackendAnticipos.Services;
 using BackendAnticipos.Models.Settings;
 using BackendAnticipos.Services.Auth;
+using Microsoft.Extensions.FileProviders;
 using Serilog;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     ContentRootPath = AppContext.BaseDirectory,
     WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")
 });
+
+
+
+
 
 // 📌 Crear directorio de logs si no existe
 var logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
@@ -65,6 +71,21 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        Console.WriteLine($"Sirviendo archivo estático: {ctx.File.PhysicalPath}");
+    }
+});
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "Soportes")),
+    RequestPath = "/soportes"
+});
 
 // Middleware de Swagger
 app.UseSwagger();

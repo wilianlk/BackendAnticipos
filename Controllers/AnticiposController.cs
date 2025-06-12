@@ -97,11 +97,15 @@ namespace BackendAnticipos.Controllers
 
                     dto = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(idAnticipo);
 
-                    var destinatarios = new List<string>
-                    {
-                        "wlucumi@recamier.com"
-                        //1dto.CorreoAprobador
-                    };
+                    var destinatarios = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
+                        destinatarios.Add(dto.CorreoSolicitante);
+
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        destinatarios.Add(dto.CorreoAprobador);
+
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        destinatarios.Add("powerapps@recamier.com");
 
                     await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
 
@@ -161,34 +165,85 @@ namespace BackendAnticipos.Controllers
         }
 
         [HttpPut("aprobar")]
-        public async Task<IActionResult> AprobarAnticipo([FromQuery] int idAnticipo)
+        public async Task<IActionResult> AprobarORechazarAnticipo([FromQuery] int idAnticipo, [FromQuery] string accion)
         {
-            try
-            {
-                if (idAnticipo <= 0)
-                    return BadRequest(new { success = false, message = "Id de anticipo inválido." });
+            _logger.LogInformation($"[DEBUG] Acción recibida: {accion} para anticipo: {idAnticipo}");
 
+            if (idAnticipo <= 0)
+                return BadRequest(new { success = false, message = "Id de anticipo inválido." });
+
+            if (!string.IsNullOrWhiteSpace(accion) && accion.ToLower() == "rechazar")
+            {
+                var rechazado = await _informixService.RechazarAnticipoAsync(idAnticipo);
+
+                if (rechazado)
+                {
+                    var dto = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(idAnticipo);
+                    var destinatarios = new List<string>();
+
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
+                        destinatarios.Add(dto.CorreoSolicitante);
+
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        destinatarios.Add(dto.CorreoAprobador);
+
+                    destinatarios.Add("powerapps@recamier.com");
+                    destinatarios.Add("mcvaron@recamier.com");
+                    destinatarios.Add("lvergara@recamier.com");
+                    destinatarios.Add("cltapia@recamier.com");
+
+                    destinatarios = destinatarios
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct()
+                        .ToList();
+
+                    await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+
+                    _logger.LogInformation($"Anticipo {idAnticipo} rechazado correctamente y correo enviado.");
+                    return Ok(new { success = true, message = "Anticipo rechazado correctamente." });
+                }
+                else
+                {
+                    _logger.LogWarning($"No se encontró o no se pudo rechazar el anticipo {idAnticipo}.");
+                    return NotFound(new { success = false, message = "No se encontró o no se pudo rechazar el anticipo." });
+                }
+            }
+            else
+            {
                 var actualizado = await _informixService.AprobarAnticipoAsync(idAnticipo);
 
                 if (actualizado)
                 {
                     var dto = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(idAnticipo);
-
                     if (dto.Estado == "VALIDANDO RETENCION")
                     {
-                        var destinatarios = new List<string>
-                        {
-                         "wlucumi@recamier.com", "jmontoya@recamier.com"
-                        };
+                        var correoRetenciones = await _informixService.ObtenerCorreoPorRolAsync("Retenciones");
+
+                        var destinatarios = new List<string>();
+
+                        if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
+                            destinatarios.Add(dto.CorreoSolicitante);
+                        //if (!string.IsNullOrWhiteSpace(correoRetenciones))
+                        //    destinatarios.Add(correoRetenciones);
+
+                        destinatarios.Add("powerapps@recamier.com");
+                        destinatarios.Add("mcvaron@recamier.com");
+                        destinatarios.Add("lvergara@recamier.com");
+                        destinatarios.Add("cltapia@recamier.com");
+
+                        destinatarios = destinatarios
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Distinct()
+                            .ToList();
 
                         await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+
                         _logger.LogInformation($"Anticipo {idAnticipo} aprobado correctamente y correo enviado.");
                     }
                     else
                     {
                         _logger.LogWarning($"Anticipo {idAnticipo} no se encuentra en estado 'VALIDANDO RETENCION'. No se envía correo.");
                     }
-
                     return Ok(new { success = true, message = "Anticipo aprobado correctamente." });
                 }
                 else
@@ -196,11 +251,6 @@ namespace BackendAnticipos.Controllers
                     _logger.LogWarning($"No se encontró o no se pudo aprobar el anticipo {idAnticipo}.");
                     return NotFound(new { success = false, message = "No se encontró o no se pudo aprobar el anticipo." });
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error al aprobar el anticipo {idAnticipo}.");
-                return StatusCode(500, new { success = false, message = "Error interno al aprobar el anticipo." });
             }
         }
 
@@ -294,24 +344,35 @@ namespace BackendAnticipos.Controllers
                 {
                     var dto = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(solicitud.IdAnticipo);
 
+                    var destinatarios = new List<string>();
+
                     if (dto.Estado == "PENDIENTE DE PAGO")
                     {
-                        var destinatarios = new List<string>
-                        {
-                            "wlucumi@recamier.com", ""
-                        };
+                        var correoPagador = await _informixService.ObtenerCorreoPorRolAsync("Pagador");
+
+                        if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
+                            destinatarios.Add(dto.CorreoSolicitante);
+
+                            destinatarios.Add("powerapps@recamier.com");
+                            destinatarios.Add("almesa@recamier.com");
+
+                            destinatarios = destinatarios
+                                .Where(x => !string.IsNullOrWhiteSpace(x))
+                                .Distinct()
+                                .ToList();
 
                         await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+
                         _logger.LogInformation("Correo de notificación enviado para estado 'PENDIENTE DE PAGO'.");
                     }
                     else if (dto.Estado == "FINALIZADO")
                     {
-                        var destinatarios = new List<string>
-                        {
-                            "wlucumi@recamier.com", ""
-                        };
+
+                        if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
+                            destinatarios.Add(dto.CorreoSolicitante);
 
                         await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+
                         _logger.LogInformation("Correo de notificación enviado para estado 'FINALIZADO'.");
                     }
                     else
@@ -351,6 +412,7 @@ namespace BackendAnticipos.Controllers
                 }
 
                 _logger.LogInformation($"Consulta exitosa. Registros encontrados: {anticipos.Count}");
+
                 return Ok(new
                 {
                     success = true,
@@ -402,6 +464,40 @@ namespace BackendAnticipos.Controllers
                 if (ok)
                 {
                     _logger.LogInformation("Pago registrado exitosamente para anticipo {IdAnticipo}", dto.IdAnticipo);
+
+                    var anticipo = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(dto.IdAnticipo);
+
+                    if (anticipo.Estado == "PAGADO / PENDIENTE POR LEGALIZAR")
+                    {
+                        anticipo.SoporteNombre = soportePagoNombre;
+
+                        var correoLegalizador = await _informixService.ObtenerCorreoPorRolAsync("Legalizador");
+
+                        var destinatarios = new List<string>();
+
+                        if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
+                            destinatarios.Add(anticipo.CorreoSolicitante);
+
+                        //if (!string.IsNullOrWhiteSpace(correoLegalizador))
+                        //destinatarios.Add(correoLegalizador);
+
+                            destinatarios.Add("powerapps@recamier.com");
+                            destinatarios.Add("flmora@recamier.com");
+                            destinatarios.Add("almesa@recamier.com");
+
+                            destinatarios = destinatarios
+                                .Where(x => !string.IsNullOrWhiteSpace(x))
+                                .Distinct()
+                                .ToList();
+
+
+                        await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("No se envió correo porque el estado es '{Estado}'", anticipo.Estado);
+                    }
+
                     return Ok(new { success = true, message = "Pago registrado correctamente.", soporte_pago = soportePagoNombre });
                 }
                 else
@@ -471,12 +567,29 @@ namespace BackendAnticipos.Controllers
 
                     if (anticipo.Estado == "FINALIZADO")
                     {
-                        var destinatarios = new List<string>
-                        {
-                         "wlucumi@recamier.com"
-                        };
+                        var correoLegalizador = await _informixService.ObtenerCorreoPorRolAsync("Legalizador");
+
+                        var destinatarios = new List<string>();
+
+                        if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
+                            destinatarios.Add(anticipo.CorreoSolicitante);
+
+                        if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
+                            destinatarios.Add(anticipo.CorreoAprobador);
+
+                        //if (!string.IsNullOrWhiteSpace(correoLegalizador))
+                        //destinatarios.Add(correoLegalizador);
+
+                        destinatarios.Add("powerapps@recamier.com");
+                        destinatarios.Add("flmora@recamier.com");
+
+                        destinatarios = destinatarios
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Distinct()
+                            .ToList();
 
                         await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
+
                         _logger.LogInformation("Correo de notificación enviado para estado 'FINALIZADO'.");
                     }
 
@@ -541,7 +654,6 @@ namespace BackendAnticipos.Controllers
                 return StatusCode(500, new { success = false, message = "Error interno al consultar solicitado vs pagado." });
             }
         }
-
         private async Task EnviarCorreoAsync(SolicitudAnticipo dto, string rootPath, List<string> destinatarios)
         {
             try
@@ -555,90 +667,131 @@ namespace BackendAnticipos.Controllers
                 };
 
                 string numeroAnticipo = dto.IdAnticipo.ToString();
-                string nombreDestinatario = dto.Solicitante;
-                string anio = DateTime.Now.Year.ToString();
 
-                string botonAprobar = "";
-                if (dto.Estado == "PENDIENTE APROBACION")
+                foreach (var correo in destinatarios.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct())
                 {
-                    botonAprobar = $@"
-                <p style='text-align:center;margin-top:30px;'>
-                  <a href='{rootPath}/?id={numeroAnticipo}'
-                     style='display:inline-block;padding:12px 24px;
-                            background-color:#28a745;color:#fff;
-                            text-decoration:none;border-radius:4px;'>
-                    Aprobar
-                  </a>
-                </p>";
-                }
+                    bool esSolicitante = !string.IsNullOrEmpty(dto.CorreoSolicitante) &&
+                                         correo.Equals(dto.CorreoSolicitante, StringComparison.OrdinalIgnoreCase);
 
-                using var mail = new MailMessage
-                {
-                    From = new MailAddress(_smtp.User, "Notificaciones Anticipos"),
-                    Subject = $"Actualización de Estado de Solicitud de Anticipo No.{numeroAnticipo}",
-                    IsBodyHtml = true,
-                    Body = $@"
-                    <html>
-                      <body style='background-color:#f2f2f2;margin:0;padding:0;font-family:Arial,sans-serif;'>
-                        <div style='max-width:600px;margin:40px auto;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.12);'>
-                          <div style='background:#444444;padding:28px 0;text-align:center;color:#fff;font-size:1.4em;font-weight:bold;'>
-                            Actualización de Estado de Solicitud de Anticipo No.{numeroAnticipo}
-                          </div>
-                          <div style='background:#fff;padding:32px 32px 24px 32px;font-size:1.08em;color:#222;'>
-                            <p>Estimado/a <b>{nombreDestinatario}</b>,</p>
-                            <p>Le informamos que el estado de su solicitud de anticipo ha cambiado.</p>
-                            <p style='font-weight:bold;font-size:1.13em;margin-top:18px;'>
-                              Nuevo Estado: <span style='color:#333;'>{dto.Estado}</span>
-                            </p>
-                            <p style='margin-top:30px;'>Para más detalles, por favor acceda a su cuenta en nuestro sistema.</p>
-                            <p>Si tiene alguna pregunta, no dude en contactarnos.</p>
-                            <p style='margin-top:30px;'>Saludos cordiales.</p>
-                            {botonAprobar}
-                          </div>
-                          <div style='background:#444444;padding:8px 0;text-align:center;color:#fff;font-size:0.96em;'>
-                            &copy; {anio} Recamier S.A. Todos los derechos reservados.
-                          </div>
-                        </div>
-                      </body>
-                    </html>"
-                };
+                    string cuerpoCorreo = GenerarCuerpoCorreo(dto, rootPath, esSolicitante);
 
-                foreach (var correo in destinatarios.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct())
-                {
+                    using var mail = new MailMessage
+                    {
+                        From = new MailAddress(_smtp.User, "Notificaciones Anticipos"),
+                        Subject = $"Actualización de Estado de Solicitud de Anticipo No.{numeroAnticipo}",
+                        IsBodyHtml = true,
+                        Body = cuerpoCorreo
+                    };
+
                     mail.To.Add(correo);
+                    AdjuntarSoporte(dto.SoporteNombre, mail);
+
+                    await smtp.SendMailAsync(mail);
+                    _logger.LogInformation("Correo enviado a: {Destino}", correo);
                 }
-
-                // Adjunta el soporte si existe
-                if (!string.IsNullOrEmpty(dto.SoporteNombre))
-                {
-                    var soportesPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Soportes");
-                    var fileName = Path.GetFileName(dto.SoporteNombre);
-                    var adjPath = Path.Combine(soportesPath, fileName);
-
-                    _logger.LogInformation("Intentando adjuntar soporte desde: {AdjPath}", adjPath);
-
-                    if (System.IO.File.Exists(adjPath))
-                    {
-                        mail.Attachments.Add(new Attachment(adjPath));
-                        _logger.LogInformation("Soporte adjuntado correctamente al correo: {AdjPath}", adjPath);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("No se encontró el archivo de soporte en la ruta esperada: {AdjPath}", adjPath);
-                    }
-                }
-                else
-                {
-                    _logger.LogInformation("No se recibió soporte adjunto para esta solicitud.");
-                }
-
-                await smtp.SendMailAsync(mail);
-
-                _logger.LogInformation("Correo de notificación enviado a: {Destino}.", string.Join(",", destinatarios));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al enviar el correo de notificación.");
+            }
+        }
+        private string GenerarCuerpoCorreo(SolicitudAnticipo dto, string rootPath, bool esSolicitante = false)
+        {
+            string numeroAnticipo = dto.IdAnticipo.ToString();
+            string nombreDestinatario = dto.Solicitante;
+            string anio = DateTime.Now.Year.ToString();
+
+            string botonesAccion = "";
+            if (!esSolicitante && dto.Estado == "PENDIENTE APROBACION")
+            {
+                botonesAccion = $@"
+                <div style='text-align:center;margin-top:30px;'>
+                  <a href='{rootPath}/?id={numeroAnticipo}&accion=aprobar'
+                     style='display:inline-block;margin-right:10px;padding:12px 24px;
+                            background-color:#28a745;color:#fff;
+                            text-decoration:none;border-radius:4px;'>
+                    Aprobar
+                  </a>
+                  <a href='{rootPath}/?id={numeroAnticipo}&accion=rechazar'
+                     style='display:inline-block;margin-left:10px;padding:12px 24px;
+                            background-color:#dc3545;color:#fff;
+                            text-decoration:none;border-radius:4px;'>
+                    Rechazar
+                  </a>
+                </div>";
+            }
+
+            string tablaInfoAnticipo = $@"
+            <table style='width:100%;border-collapse:collapse;margin:22px 0;font-size:1em;'>
+              <tr>
+                <th style='padding:8px;border:1px solid #ccc;background:#f4f4f4;'>Campo</th>
+                <th style='padding:8px;border:1px solid #ccc;background:#f4f4f4;'></th>
+              </tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>ID Anticipo</td><td style='padding:8px;border:1px solid #ccc;'>{dto.IdAnticipo}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Nombre Proveedor</td><td style='padding:8px;border:1px solid #ccc;'>{dto.Proveedor ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Valor Anticipo</td><td style='padding:8px;border:1px solid #ccc;'>{dto.ValorAnticipo.ToString("C0")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Fecha Solicitud</td><td style='padding:8px;border:1px solid #ccc;'>{dto.FechaSolicitud.ToString("dd/MM/yyyy")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Estado</td><td style='padding:8px;border:1px solid #ccc;'>{dto.Estado ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Legalizado</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.TieneLegalizacion == "1" || dto.TieneLegalizacion == "Sí" ? "Sí" : "No")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Solicitante</td><td style='padding:8px;border:1px solid #ccc;'>{dto.Solicitante ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Motivo Rechazo</td><td style='padding:8px;border:1px solid #ccc;'>{dto.MotivoRechazo ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>NIT Proveedor</td><td style='padding:8px;border:1px solid #ccc;'>{dto.NitProveedor ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>VP</td><td style='padding:8px;border:1px solid #ccc;'>{dto.VP ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Correo Aprobador</td><td style='padding:8px;border:1px solid #ccc;'>{dto.CorreoAprobador ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>¿Pagado?</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.Pagado.HasValue && dto.Pagado.Value == 1 ? "Sí" : "No")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>¿Quién Legaliza?</td><td style='padding:8px;border:1px solid #ccc;'>{dto.QuienLegaliza ?? "-"}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Retención Fuente</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.RetencionFuente.HasValue ? dto.RetencionFuente.Value.ToString("C0") : "0")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Retención ICA</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.RetencionIca.HasValue ? dto.RetencionIca.Value.ToString("C0") : "0")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Retención IVA</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.RetencionIva.HasValue ? dto.RetencionIva.Value.ToString("C0") : "0")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Valor a Pagar</td><td style='padding:8px;border:1px solid #ccc;'>{dto.ValorAPagar.ToString("C0")}</td></tr>
+            </table>
+            <div style='margin:12px 0 0 0;'>
+              <strong>Concepto:</strong><br>
+              <span style='background:#f8f8f8;padding:8px 12px;display:block;border-radius:4px;border:1px solid #e0e0e0;'>{dto.Concepto ?? "-"}</span>
+            </div>
+            ";
+
+            return $@"
+            <html>
+              <body style='background-color:#f2f2f2;margin:0;padding:0;font-family:Arial,sans-serif;'>
+                <div style='max-width:600px;margin:40px auto;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.12);'>
+                  <div style='background:#444444;padding:28px 0;text-align:center;color:#fff;font-size:1.4em;font-weight:bold;'>
+                    Actualización de Estado de Solicitud de Anticipo No.{numeroAnticipo}
+                  </div>
+                  <div style='background:#fff;padding:32px 32px 24px 32px;font-size:1.08em;color:#222;'>
+                    <p>Estimado/a <b>{nombreDestinatario}</b>,</p>
+                    <p>Le informamos que el estado de su solicitud de anticipo ha cambiado.</p>
+                    <p style='font-weight:bold;font-size:1.13em;margin-top:18px;'>
+                      Nuevo Estado: <span style='color:#333;'>{dto.Estado}</span>
+                    </p>
+                    {tablaInfoAnticipo}
+                    <p style='margin-top:30px;'>Para más detalles, por favor acceda a su cuenta en nuestro sistema.</p>
+                    <p>Si tiene alguna pregunta, no dude en contactarnos.</p>
+                    <p style='margin-top:30px;'>Saludos cordiales.</p>
+                    {botonesAccion}
+                  </div>
+                  <div style='background:#444444;padding:8px 0;text-align:center;color:#fff;font-size:0.96em;'>
+                    &copy; {anio} Recamier S.A. Todos los derechos reservados.
+                  </div>
+                </div>
+              </body>
+            </html>";
+        }
+        private void AdjuntarSoporte(string? soporteRelativo, MailMessage mail)
+        {
+            if (string.IsNullOrEmpty(soporteRelativo)) return;
+
+            // Ruta absoluta real (usando la ruta relativa completa)
+            var fullPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", soporteRelativo);
+
+            if (System.IO.File.Exists(fullPath))
+            {
+                mail.Attachments.Add(new Attachment(fullPath));
+                _logger.LogInformation("Adjunto agregado: {Archivo}", fullPath);
+            }
+            else
+            {
+                _logger.LogWarning("Archivo no encontrado para adjunto: {Archivo}", fullPath);
             }
         }
 

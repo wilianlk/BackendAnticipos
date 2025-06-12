@@ -30,6 +30,7 @@ namespace BackendAnticipos.Models
         public decimal? RetencionIva { get; set; }
         public decimal? RetencionIca { get; set; }
         public string? MotivoRechazo { get; set; }
+        public string? CorreoSolicitante { get; set; }
 
         [NotMapped]                
         public IFormFile? Soporte { get; set; }
