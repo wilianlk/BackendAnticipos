@@ -67,38 +67,36 @@ namespace BackendAnticipos.Services.Auth
                 return (false, null, null, null);
             }
         }
-
-        public async Task<bool> RegistrarUsuarioAsync(string usuario, string password, List<string> roles, string correo)
+        public async Task<bool> RegistrarUsuarioAsync(string usuario, string password, List<string> roles, string correo, string area = "SIN_AREA")
         {
             if (string.IsNullOrWhiteSpace(correo) ||
                 !correo.Trim().ToLower().EndsWith("@recamier.com") ||
-                string.IsNullOrWhiteSpace(usuario) ||
-                roles == null || roles.Count == 0)
+                string.IsNullOrWhiteSpace(usuario))
             {
                 return false;
             }
 
             const string checkSql = @"
-                SELECT COUNT(*) 
-                FROM usuarios_anticipo
-                WHERE TRIM(correo) = @Correo OR TRIM(usuario) = @Usuario";
+            SELECT COUNT(*) 
+            FROM usuarios_anticipo
+            WHERE TRIM(correo) = @Correo OR TRIM(usuario) = @Usuario";
 
             const string insertSql = @"
-                INSERT INTO usuarios_anticipo (usuario, clave, correo, area)
-                VALUES (@Usuario, @Password, @Correo, @Area)";
+            INSERT INTO usuarios_anticipo (usuario, clave, correo, area, id_rol)
+            VALUES (@Usuario, @Password, @Correo, @Area, @IdRol)";
 
             const string getUserIdSql = @"
-                SELECT id_usuario FROM usuarios_anticipo
-                WHERE TRIM(usuario) = @Usuario AND TRIM(correo) = @Correo";
+            SELECT id_usuario FROM usuarios_anticipo
+            WHERE TRIM(usuario) = @Usuario AND TRIM(correo) = @Correo";
 
             const string getRolIdSql = @"
-                SELECT id_rol 
-                FROM roles_anticipos
-                WHERE TRIM(nombre_rol) = @Rol";
+            SELECT id_rol 
+            FROM roles_anticipos
+            WHERE TRIM(nombre_rol) = @Rol";
 
             const string insertUserRolSql = @"
-                INSERT INTO usuario_rol_anticipo (id_usuario, id_rol)
-                VALUES (@IdUsuario, @IdRol)";
+            INSERT INTO usuario_rol_anticipo (id_usuario, id_rol)
+            VALUES (@IdUsuario, @IdRol)";
 
             try
             {
@@ -117,13 +115,26 @@ namespace BackendAnticipos.Services.Auth
                     return false;
                 }
 
-                // Insertar usuario (por defecto área "SIN_AREA" si no hay campo)
+                // SIEMPRE usar el rol USUARIO
+                int idRol;
+                using (var getRolCmd = conn.CreateCommand())
+                {
+                    getRolCmd.CommandText = getRolIdSql;
+                    getRolCmd.Parameters.Add(new DB2Parameter("@Rol", DB2Type.VarChar) { Value = "Usuario" });
+                    var idRolObj = await getRolCmd.ExecuteScalarAsync();
+                    if (idRolObj == null)
+                        throw new Exception("El rol 'USUARIO' no existe.");
+                    idRol = Convert.ToInt32(idRolObj);
+                }
+
+                // Insertar usuario incluyendo id_rol
                 using var insertCmd = conn.CreateCommand();
                 insertCmd.CommandText = insertSql;
                 insertCmd.Parameters.Add(new DB2Parameter("@Usuario", DB2Type.VarChar) { Value = usuario });
                 insertCmd.Parameters.Add(new DB2Parameter("@Password", DB2Type.VarChar) { Value = password });
                 insertCmd.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo });
-                insertCmd.Parameters.Add(new DB2Parameter("@Area", DB2Type.Char) { Value = "SIN_AREA" });
+                insertCmd.Parameters.Add(new DB2Parameter("@Area", DB2Type.Char) { Value = area ?? "SIN_AREA" });
+                insertCmd.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
                 var result = await insertCmd.ExecuteNonQueryAsync();
                 if (result <= 0)
                     return false;
@@ -141,29 +152,15 @@ namespace BackendAnticipos.Services.Auth
                     idUsuario = Convert.ToInt32(idObj);
                 }
 
-                // Insertar los roles para este usuario
-                foreach (var rol in roles)
+                // Insertar asociación usuario-rol (solo con el rol USUARIO)
+                using (var insertUserRolCmd = conn.CreateCommand())
                 {
-                    // Buscar id_rol
-                    int idRol;
-                    using (var getRolCmd = conn.CreateCommand())
-                    {
-                        getRolCmd.CommandText = getRolIdSql;
-                        getRolCmd.Parameters.Add(new DB2Parameter("@Rol", DB2Type.VarChar) { Value = rol });
-                        var idRolObj = await getRolCmd.ExecuteScalarAsync();
-                        if (idRolObj == null)
-                            throw new Exception($"El rol '{rol}' no existe.");
-                        idRol = Convert.ToInt32(idRolObj);
-                    }
-                    // Insertar asociación usuario-rol
-                    using (var insertUserRolCmd = conn.CreateCommand())
-                    {
-                        insertUserRolCmd.CommandText = insertUserRolSql;
-                        insertUserRolCmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
-                        insertUserRolCmd.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
-                        await insertUserRolCmd.ExecuteNonQueryAsync();
-                    }
+                    insertUserRolCmd.CommandText = insertUserRolSql;
+                    insertUserRolCmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
+                    insertUserRolCmd.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
+                    await insertUserRolCmd.ExecuteNonQueryAsync();
                 }
+
                 return true;
             }
             catch (Exception ex)

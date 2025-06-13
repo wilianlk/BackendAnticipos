@@ -11,10 +11,6 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")
 });
 
-
-
-
-
 // 📌 Crear directorio de logs si no existe
 var logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
 if (!Directory.Exists(logDirectory))
@@ -45,28 +41,32 @@ builder.Services.Configure<SmtpSettings>(
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configuraci�n de CORS
+// Configuración de CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowSpecificOrigins", policy =>
     {
-        policy.WithOrigins("http://192.168.20.30:8089", "https://portalpagos.recamier.com", "http://localhost:3000") // Cambia por tus dominios permitidos
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        policy.WithOrigins(
+            "http://192.168.20.30:8089",
+            "https://portalpagos.recamier.com",
+            "http://localhost:3000"
+        )
+        .AllowAnyMethod()
+        .AllowAnyHeader();
     });
 
     options.AddPolicy("AllowAll", policy =>
     {
         policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 
     options.AddPolicy("AllowAllOrigins", policy =>
     {
         policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
 
@@ -80,10 +80,17 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+// 📌 Crear directorio "Soportes" si no existe antes de exponer archivos estáticos
+var soportesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Soportes");
+if (!Directory.Exists(soportesDirectory))
+{
+    Directory.CreateDirectory(soportesDirectory);
+}
+
+// Servir archivos estáticos desde /soportes
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(
-        Path.Combine(Directory.GetCurrentDirectory(), "Soportes")),
+    FileProvider = new PhysicalFileProvider(soportesDirectory),
     RequestPath = "/soportes"
 });
 
@@ -113,12 +120,12 @@ else
 }
 
 // Middleware para servir el frontend
-app.UseDefaultFiles(); // Redirige autom�ticamente a index.html
+app.UseDefaultFiles(); // Redirige automáticamente a index.html
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
     {
-        Console.WriteLine($"Sirviendo archivo est�tico: {ctx.File.PhysicalPath}");
+        Console.WriteLine($"Sirviendo archivo estático: {ctx.File.PhysicalPath}");
     }
 });
 

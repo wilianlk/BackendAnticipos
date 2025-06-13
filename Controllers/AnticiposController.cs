@@ -76,10 +76,13 @@ namespace BackendAnticipos.Controllers
                     var ext = Path.GetExtension(dto.Soporte.FileName);
                     var fileName = $"{Guid.NewGuid()}{ext}";
 
-                    var dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Soportes");
-                    dir = Path.GetFullPath(dir);
+                    var dir = Path.Combine(Directory.GetCurrentDirectory(), "Soportes");
+                    if (!Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                        _logger.LogInformation("Carpeta Soportes creada en: {Dir}", dir);
+                    }
 
-                    Directory.CreateDirectory(dir);
                     var pathFisica = Path.Combine(dir, fileName);
 
                     await using var fs = new FileStream(pathFisica, FileMode.Create);
@@ -101,8 +104,8 @@ namespace BackendAnticipos.Controllers
                     if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
                         destinatarios.Add(dto.CorreoSolicitante);
 
-                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
-                        destinatarios.Add(dto.CorreoAprobador);
+                    /*if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        destinatarios.Add(dto.CorreoAprobador);*/
 
                     if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
                         destinatarios.Add("powerapps@recamier.com");
@@ -184,13 +187,13 @@ namespace BackendAnticipos.Controllers
                     if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
                         destinatarios.Add(dto.CorreoSolicitante);
 
-                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
-                        destinatarios.Add(dto.CorreoAprobador);
+                    //if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        //destinatarios.Add(dto.CorreoAprobador);
 
                     destinatarios.Add("powerapps@recamier.com");
-                    destinatarios.Add("mcvaron@recamier.com");
+                    /*destinatarios.Add("mcvaron@recamier.com");
                     destinatarios.Add("lvergara@recamier.com");
-                    destinatarios.Add("cltapia@recamier.com");
+                    destinatarios.Add("cltapia@recamier.com");*/
 
                     destinatarios = destinatarios
                         .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -223,13 +226,17 @@ namespace BackendAnticipos.Controllers
 
                         if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
                             destinatarios.Add(dto.CorreoSolicitante);
-                        //if (!string.IsNullOrWhiteSpace(correoRetenciones))
-                        //    destinatarios.Add(correoRetenciones);
 
-                        destinatarios.Add("powerapps@recamier.com");
+                        //if (!string.IsNullOrWhiteSpace(correoRetenciones))
+                        //    destinata
+                        
+                        if (!string.IsNullOrWhiteSpace(correoRetenciones))
+                            destinatarios.Add(correoRetenciones);
+
+                        /*destinatarios.Add("powerapps@recamier.com");
                         destinatarios.Add("mcvaron@recamier.com");
                         destinatarios.Add("lvergara@recamier.com");
-                        destinatarios.Add("cltapia@recamier.com");
+                        destinatarios.Add("cltapia@recamier.com");*/
 
                         destinatarios = destinatarios
                             .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -354,7 +361,7 @@ namespace BackendAnticipos.Controllers
                             destinatarios.Add(dto.CorreoSolicitante);
 
                             destinatarios.Add("powerapps@recamier.com");
-                            destinatarios.Add("almesa@recamier.com");
+                            //destinatarios.Add("almesa@recamier.com");
 
                             destinatarios = destinatarios
                                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -444,13 +451,19 @@ namespace BackendAnticipos.Controllers
                 {
                     var ext = Path.GetExtension(dto.SoportePago.FileName);
                     var fileName = $"{Guid.NewGuid()}{ext}";
-                    var dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "SoportesPagos");
-                    dir = Path.GetFullPath(dir);
-                    Directory.CreateDirectory(dir);
+
+                    var dir = Path.Combine(Directory.GetCurrentDirectory(), "Soportes");
+                    if (!Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                        _logger.LogInformation("Carpeta Soportes creada en: {Dir}", dir);
+                    }
+
                     var pathFisica = Path.Combine(dir, fileName);
+
                     await using var fs = new FileStream(pathFisica, FileMode.Create);
                     await dto.SoportePago.CopyToAsync(fs);
-                    soportePagoNombre = Path.Combine("SoportesPagos", fileName);
+                    soportePagoNombre = Path.Combine("Soportes", fileName);
 
                     _logger.LogInformation("Archivo de soporte de pago guardado en {Ruta}", soportePagoNombre);
                 }
@@ -482,8 +495,8 @@ namespace BackendAnticipos.Controllers
                         //destinatarios.Add(correoLegalizador);
 
                             destinatarios.Add("powerapps@recamier.com");
-                            destinatarios.Add("flmora@recamier.com");
-                            destinatarios.Add("almesa@recamier.com");
+                            /*destinatarios.Add("flmora@recamier.com");
+                            destinatarios.Add("almesa@recamier.com");*/
 
                             destinatarios = destinatarios
                                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -574,14 +587,14 @@ namespace BackendAnticipos.Controllers
                         if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
                             destinatarios.Add(anticipo.CorreoSolicitante);
 
-                        if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
-                            destinatarios.Add(anticipo.CorreoAprobador);
+                        //if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
+                            //destinatarios.Add(anticipo.CorreoAprobador);
 
                         //if (!string.IsNullOrWhiteSpace(correoLegalizador))
                         //destinatarios.Add(correoLegalizador);
 
                         destinatarios.Add("powerapps@recamier.com");
-                        destinatarios.Add("flmora@recamier.com");
+                        //destinatarios.Add("flmora@recamier.com");
 
                         destinatarios = destinatarios
                             .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -652,6 +665,42 @@ namespace BackendAnticipos.Controllers
             {
                 _logger.LogError(ex, "Error al consultar solicitado vs pagado.");
                 return StatusCode(500, new { success = false, message = "Error interno al consultar solicitado vs pagado." });
+            }
+        }
+
+        [HttpGet("aprobados-aprobador")]
+        public async Task<IActionResult> ConsultarAnticiposAprobadosPorCorreo([FromQuery] string correoAprobador)
+        {
+            _logger.LogInformation("Consultando anticipos aprobados para el aprobador con correo: {Correo}", correoAprobador);
+
+            try
+            {
+                var anticipos = await _informixService.ConsultarAnticiposAprobadosPorCorreoAsync(correoAprobador);
+
+                if (anticipos == null || anticipos.Count == 0)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "No se encontraron anticipos aprobados para este correo."
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    total = anticipos.Count,
+                    data = anticipos
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al consultar anticipos aprobados para el correo: {Correo}", correoAprobador);
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error interno al consultar anticipos aprobados."
+                });
             }
         }
         private async Task EnviarCorreoAsync(SolicitudAnticipo dto, string rootPath, List<string> destinatarios)
@@ -781,8 +830,7 @@ namespace BackendAnticipos.Controllers
         {
             if (string.IsNullOrEmpty(soporteRelativo)) return;
 
-            // Ruta absoluta real (usando la ruta relativa completa)
-            var fullPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", soporteRelativo);
+            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), soporteRelativo);
 
             if (System.IO.File.Exists(fullPath))
             {

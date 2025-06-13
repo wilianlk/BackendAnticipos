@@ -711,6 +711,81 @@ namespace BackendAnticipos.Services
             var result = await cmd.ExecuteNonQueryAsync();
             return result > 0;
         }
+        public async Task<List<SolicitudAnticipo>> ConsultarAnticiposAprobadosPorCorreoAsync(string correoAprobador)
+        {
+            var lista = new List<SolicitudAnticipo>();
 
+            const string sql = @"
+            SELECT 
+                id_anticipo,
+                id_solicitante,
+                solicitante,
+                aprobador_id,
+                correo_aprobador,
+                proveedor,
+                nit_proveedor,
+                concepto,
+                valor_anticipo,
+                valor_a_pagar,
+                pagado,
+                soporte_nombre,
+                soporte_pago_nombre,
+                fecha_solicitud,
+                fecha_aprobacion,
+                estado,
+                aprop_vp,
+                vp,
+                tiene_legalizacion,
+                quien_legaliza,
+                retencion_fuente,
+                retencion_iva,
+                retencion_ica,
+                motivo_rechazo
+            FROM anticipos_solicitados
+            WHERE TRIM(LOWER(correo_aprobador)) = TRIM(LOWER(@CorreoAprobador))
+              AND TRIM(aprop_vp) = 'APROBADO'
+            ORDER BY fecha_aprobacion DESC";
+
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@CorreoAprobador", DB2Type.VarChar) { Value = correoAprobador });
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                lista.Add(new SolicitudAnticipo
+                {
+                    IdAnticipo = reader.GetInt32(0),
+                    IdSolicitante = reader.GetInt32(1),
+                    Solicitante = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim(),
+                    AprobadorId = reader.GetInt32(3),
+                    CorreoAprobador = reader.IsDBNull(4) ? null : reader.GetString(4).Trim(),
+                    Proveedor = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    NitProveedor = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    Concepto = reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                    ValorAnticipo = reader.GetDecimal(8),
+                    ValorAPagar = reader.IsDBNull(9) ? 0 : reader.GetDecimal(9),
+                    Pagado = reader.IsDBNull(10) ? (decimal?)null : reader.GetDecimal(10),
+                    SoporteNombre = reader.IsDBNull(11) ? null : reader.GetString(11).Trim(),
+                    SoportePagoNombre = reader.IsDBNull(12) ? null : reader.GetString(12).Trim(),
+                    FechaSolicitud = reader.GetDateTime(13),
+                    FechaAprobacion = reader.IsDBNull(14) ? (DateTime?)null : reader.GetDateTime(14),
+                    Estado = reader.IsDBNull(15) ? null : reader.GetString(15).Trim(),
+                    ApropVP = reader.IsDBNull(16) ? null : reader.GetString(16).Trim(),
+                    VP = reader.IsDBNull(17) ? null : reader.GetString(17).Trim(),
+                    TieneLegalizacion = reader.IsDBNull(18) ? null : reader.GetString(18).Trim(),
+                    QuienLegaliza = reader.IsDBNull(19) ? null : reader.GetString(19).Trim(),
+                    RetencionFuente = reader.IsDBNull(20) ? (decimal?)null : reader.GetDecimal(20),
+                    RetencionIva = reader.IsDBNull(21) ? (decimal?)null : reader.GetDecimal(21),
+                    RetencionIca = reader.IsDBNull(22) ? (decimal?)null : reader.GetDecimal(22),
+                    MotivoRechazo = reader.IsDBNull(23) ? null : reader.GetString(23).Trim()
+                });
+            }
+
+            return lista;
+        }
     }
 }
