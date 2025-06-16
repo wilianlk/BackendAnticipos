@@ -279,7 +279,10 @@ namespace BackendAnticipos.Services
                 retencion_fuente,
                 retencion_iva,
                 retencion_ica,
-                fecha_aprobacion
+                fecha_aprobacion,
+                motivo_rechazo,
+                detalle_motivo_rechazo,
+                otras_deducciones
             FROM anticipos_solicitados
             WHERE TRIM(estado) = 'VALIDANDO RETENCION'
             ORDER BY fecha_solicitud DESC";
@@ -315,6 +318,9 @@ namespace BackendAnticipos.Services
                     RetencionIva = reader.IsDBNull(17) ? null : reader.GetDecimal(17),
                     RetencionIca = reader.IsDBNull(18) ? null : reader.GetDecimal(18),
                     FechaAprobacion = reader.IsDBNull(19) ? null : reader.GetDateTime(19),
+                    MotivoRechazo = reader.IsDBNull(20) ? null : reader.GetString(20).Trim(),
+                    DetalleMotivoRechazo = reader.IsDBNull(21) ? null : reader.GetString(21).Trim(),
+                    OtrasDeducciones = reader.IsDBNull(22) ? null : reader.GetDecimal(22),
                 });
             }
 
@@ -328,7 +334,9 @@ namespace BackendAnticipos.Services
                 retencion_fuente = @RetencionFuente,
                 retencion_iva = @RetencionIva,
                 retencion_ica = @RetencionIca,
+                otras_deducciones = @OtrasDeducciones,
                 motivo_rechazo = @MotivoRechazo,
+                detalle_motivo_rechazo = @DetalleMotivoRechazo,
                 valor_a_pagar = @ValorAPagar,
                 estado = @Estado
             WHERE id_anticipo = @IdAnticipo
@@ -347,7 +355,9 @@ namespace BackendAnticipos.Services
             cmd.Parameters.Add(new DB2Parameter("@RetencionFuente", DB2Type.Decimal) { Value = solicitud.RetencionFuente ?? 0 });
             cmd.Parameters.Add(new DB2Parameter("@RetencionIva", DB2Type.Decimal) { Value = solicitud.RetencionIva ?? 0 });
             cmd.Parameters.Add(new DB2Parameter("@RetencionIca", DB2Type.Decimal) { Value = solicitud.RetencionIca ?? 0 });
+            cmd.Parameters.Add(new DB2Parameter("@OtrasDeducciones", DB2Type.Decimal) { Value = solicitud.OtrasDeducciones ?? 0 });
             cmd.Parameters.Add(new DB2Parameter("@MotivoRechazo", DB2Type.VarChar) { Value = solicitud.MotivoRechazo ?? "" });
+            cmd.Parameters.Add(new DB2Parameter("@DetalleMotivoRechazo", DB2Type.VarChar) { Value = solicitud.DetalleMotivoRechazo ?? "" });
             cmd.Parameters.Add(new DB2Parameter("@ValorAPagar", DB2Type.Decimal) { Value = solicitud.ValorAPagar ?? 0 });
             cmd.Parameters.Add(new DB2Parameter("@Estado", DB2Type.VarChar) { Value = estado });
             cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = solicitud.IdAnticipo });
@@ -396,20 +406,20 @@ namespace BackendAnticipos.Services
                 {
                     IdAnticipo = reader.GetInt32(0),
                     Solicitante = reader.GetString(1).Trim(),
-                    AprobadorId = reader.GetInt32(2),
-                    CorreoAprobador = reader.GetString(3).Trim(),
-                    Proveedor = reader.GetString(4).Trim(),
-                    NitProveedor = reader.GetString(5).Trim(),
-                    Concepto = reader.GetString(6).Trim(),
-                    ValorAnticipo = reader.GetDecimal(7),
-                    Pagado = reader.IsDBNull(8) ? null : reader.GetDecimal(8),
+                    AprobadorId = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                    CorreoAprobador = reader.IsDBNull(3) ? null : reader.GetString(3).Trim(),
+                    Proveedor = reader.IsDBNull(4) ? null : reader.GetString(4).Trim(),
+                    NitProveedor = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    Concepto = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    ValorAnticipo = reader.IsDBNull(7) ? 0m : reader.GetDecimal(7),
+                    Pagado = reader.IsDBNull(8) ? (decimal?)null : reader.GetDecimal(8),
                     SoporteNombre = reader.IsDBNull(9) ? null : reader.GetString(9).Trim(),
                     FechaSolicitud = reader.GetDateTime(10),
-                    Estado = reader.GetString(11).Trim(),
+                    Estado = reader.IsDBNull(11) ? null : reader.GetString(11).Trim(),
                     TieneLegalizacion = reader.IsDBNull(12) ? null : reader.GetString(12).Trim(),
                     QuienLegaliza = reader.IsDBNull(13) ? null : reader.GetString(13).Trim(),
-                    MotivoRechazo = reader.GetString(14).Trim(),
-                    ValorAPagar = reader.GetDecimal(15),
+                    MotivoRechazo = reader.IsDBNull(14) ? null : reader.GetString(14).Trim(),
+                    ValorAPagar = reader.IsDBNull(15) ? 0m : reader.GetDecimal(15),
                 });
             }
 

@@ -6,7 +6,9 @@
         public decimal? RetencionFuente { get; set; }
         public decimal? RetencionIva { get; set; }
         public decimal? RetencionIca { get; set; }
+        public decimal? OtrasDeducciones { get; set; }
         public decimal? ValorAPagar { get; set; }
         public string? MotivoRechazo { get; set; }
+        public string? DetalleMotivoRechazo { get; set; }
     }
 }
