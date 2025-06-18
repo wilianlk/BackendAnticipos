@@ -125,7 +125,11 @@ namespace BackendAnticipos.Services
         {
             var lista = new List<SolicitudAnticipo>();
 
-            const string sql = @"
+            // Obtener el rol del usuario
+            int idRol = await ObtenerRolUsuarioAsync(idUsuario);
+
+            // Construir la consulta SQL
+            var sql = @"
             SELECT 
                 id_anticipo,
                 id_solicitante,
@@ -150,17 +154,25 @@ namespace BackendAnticipos.Services
                 retencion_fuente,
                 retencion_iva,
                 retencion_ica,
-                motivo_rechazo
+                motivo_rechazo,
+                detalle_motivo_rechazo,
+                otras_deducciones
             FROM anticipos_solicitados
-            WHERE id_solicitante = @IdUsuario
+            /**WHERE_CLAUSE**/
             ORDER BY fecha_solicitud DESC";
+
+            // Definir la cláusula WHERE solo si no es rol 7
+            string whereClause = (idRol == 1 || idRol == 7) ? "" : "WHERE id_solicitante = @IdUsuario";
+            sql = sql.Replace("/**WHERE_CLAUSE**/", whereClause);
 
             using var conn = new DB2Connection(_connectionString);
             await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
-            cmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
+
+            if (!(idRol == 1 || idRol == 7))
+                cmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -190,9 +202,10 @@ namespace BackendAnticipos.Services
                     RetencionFuente = reader.IsDBNull(20) ? (decimal?)null : reader.GetDecimal(20),
                     RetencionIva = reader.IsDBNull(21) ? (decimal?)null : reader.GetDecimal(21),
                     RetencionIca = reader.IsDBNull(22) ? (decimal?)null : reader.GetDecimal(22),
-                    MotivoRechazo = reader.IsDBNull(23) ? null : reader.GetString(23).Trim()
+                    MotivoRechazo = reader.IsDBNull(23) ? null : reader.GetString(23).Trim(),
+                    DetalleMotivoRechazo = reader.IsDBNull(24) ? null : reader.GetString(24).Trim(),
+                    OtrasDeducciones = reader.IsDBNull(25) ? (decimal?)null : reader.GetDecimal(25)
                 };
-
                 lista.Add(anticipo);
             }
 
@@ -796,6 +809,17 @@ namespace BackendAnticipos.Services
             }
 
             return lista;
+        }
+        public async Task<int> ObtenerRolUsuarioAsync(int idUsuario)
+        {
+            const string sql = "SELECT id_rol FROM usuarios_anticipo WHERE id_usuario = @IdUsuario";
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null ? Convert.ToInt32(result) : 0;
         }
     }
 }

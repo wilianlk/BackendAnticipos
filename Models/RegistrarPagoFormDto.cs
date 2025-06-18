@@ -4,6 +4,6 @@
     {
         public int IdAnticipo { get; set; }
         public bool Pagado { get; set; }
-        public IFormFile? SoportePago { get; set; }
+        public List<IFormFile>? SoportesPago { get; set; }
     }
 }

@@ -472,13 +472,11 @@ namespace BackendAnticipos.Controllers
             {
                 _logger.LogInformation("Iniciando registro de pago para anticipo {IdAnticipo}", dto.IdAnticipo);
 
-                string? soportePagoNombre = null;
+                List<string> archivosGuardados = new();
 
-                if (dto.SoportePago != null && dto.SoportePago.Length > 0)
+                // 1. Guardar múltiples archivos soporte
+                if (dto.SoportesPago != null && dto.SoportesPago.Count > 0)
                 {
-                    var ext = Path.GetExtension(dto.SoportePago.FileName);
-                    var fileName = $"{Guid.NewGuid()}{ext}";
-
                     var dir = Path.Combine(Directory.GetCurrentDirectory(), "Soportes");
                     if (!Directory.Exists(dir))
                     {
@@ -486,18 +484,28 @@ namespace BackendAnticipos.Controllers
                         _logger.LogInformation("Carpeta Soportes creada en: {Dir}", dir);
                     }
 
-                    var pathFisica = Path.Combine(dir, fileName);
+                    foreach (var archivo in dto.SoportesPago)
+                    {
+                        if (archivo.Length > 0)
+                        {
+                            var ext = Path.GetExtension(archivo.FileName);
+                            var fileName = $"{Guid.NewGuid()}{ext}";
+                            var pathFisica = Path.Combine(dir, fileName);
 
-                    await using var fs = new FileStream(pathFisica, FileMode.Create);
-                    await dto.SoportePago.CopyToAsync(fs);
-                    soportePagoNombre = Path.Combine("Soportes", fileName);
+                            using (var fs = new FileStream(pathFisica, FileMode.Create))
+                            {
+                                await archivo.CopyToAsync(fs);
+                            }
 
-                    _logger.LogInformation("Archivo de soporte de pago guardado en {Ruta}", soportePagoNombre);
+                            archivosGuardados.Add(Path.Combine("Soportes", fileName));
+                            _logger.LogInformation("Archivo de soporte de pago guardado en {Ruta}", Path.Combine("Soportes", fileName));
+                        }
+                    }
                 }
-                else
-                {
-                    _logger.LogInformation("No se recibió archivo de soporte de pago para el anticipo {IdAnticipo}", dto.IdAnticipo);
-                }
+
+                string? soportePagoNombre = archivosGuardados.Count > 0
+                    ? string.Join(";", archivosGuardados)
+                    : null;
 
                 var ok = await _informixService.RegistrarPagoAsync(dto.IdAnticipo, dto.Pagado, soportePagoNombre);
 
@@ -512,25 +520,17 @@ namespace BackendAnticipos.Controllers
                         anticipo.SoporteNombre = soportePagoNombre;
 
                         var correoLegalizador = await _informixService.ObtenerCorreoPorRolAsync("Legalizador");
-
                         var destinatarios = new List<string>();
 
                         if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
                             destinatarios.Add(anticipo.CorreoSolicitante);
 
-                        //if (!string.IsNullOrWhiteSpace(correoLegalizador))
-                        //destinatarios.Add(correoLegalizador);
+                        destinatarios.Add("powerapps@recamier.com");
 
-                            destinatarios.Add("powerapps@recamier.com");
-                            destinatarios.Add("mcvaron@recamier.com");
-                            destinatarios.Add("lvergara@recamier.com");
-                            destinatarios.Add("cltapia@recamier.com");
-
-                            destinatarios = destinatarios
-                                    .Where(x => !string.IsNullOrWhiteSpace(x))
-                                    .Distinct()
-                                    .ToList();
-
+                        destinatarios = destinatarios
+                                .Where(x => !string.IsNullOrWhiteSpace(x))
+                                .Distinct()
+                                .ToList();
 
                         await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
                     }
