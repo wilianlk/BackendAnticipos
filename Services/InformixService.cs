@@ -58,7 +58,8 @@ namespace BackendAnticipos.Services
                 concepto,
                 valor_anticipo,
                 soporte_nombre,
-                vp
+                vp,
+                quien_legaliza
             ) VALUES (
                 @IdSolicitante,
                 @Solicitante,
@@ -69,7 +70,8 @@ namespace BackendAnticipos.Services
                 @Concepto,
                 @ValorAnticipo,
                 @SoporteNombre,
-                @VP
+                @VP,
+                @QuienLegaliza
             )";
 
             const string identitySql =
@@ -91,6 +93,8 @@ namespace BackendAnticipos.Services
             cmd.Parameters.Add(new DB2Parameter("@ValorAnticipo", DB2Type.Decimal) { Value = dto.ValorAnticipo, Precision = 16, Scale = 2 });
             cmd.Parameters.Add(new DB2Parameter("@SoporteNombre", DB2Type.VarChar) { Value = (object?)dto.SoporteNombre ?? DBNull.Value });
             cmd.Parameters.Add(new DB2Parameter("@VP", DB2Type.VarChar) { Value = dto.VP });
+            cmd.Parameters.Add(new DB2Parameter("@QuienLegaliza", DB2Type.VarChar) { Value = dto.QuienLegaliza });
+
 
             await cmd.ExecuteNonQueryAsync();
 
@@ -161,7 +165,6 @@ namespace BackendAnticipos.Services
             /**WHERE_CLAUSE**/
             ORDER BY fecha_solicitud DESC";
 
-            // Definir la cláusula WHERE solo si no es rol 7
             string whereClause = (idRol == 1 || idRol == 7) ? "" : "WHERE id_solicitante = @IdUsuario";
             sql = sql.Replace("/**WHERE_CLAUSE**/", whereClause);
 
@@ -357,7 +360,7 @@ namespace BackendAnticipos.Services
 
             var estado = solicitud.MotivoRechazo?.Trim() == "Anticipo Activo"
             ? "PENDIENTE DE PAGO"
-            : "FINALIZADO";
+            : "RECHAZADO";
 
             using var conn = new DB2Connection(_connectionString);
             await conn.OpenAsync();
@@ -460,12 +463,11 @@ namespace BackendAnticipos.Services
                 else
                 {
                     sql = @"
-                UPDATE anticipos_solicitados
-                SET pagado = @Pagado,
-                    estado = CASE WHEN @Pagado = 1 THEN 'PAGADO / PENDIENTE POR LEGALIZAR' ELSE estado END
-                WHERE id_anticipo = @IdAnticipo
-            ";
-                    // NO se agrega parámetro para soporte_pago_nombre
+                    UPDATE anticipos_solicitados
+                    SET pagado = @Pagado,
+                        estado = CASE WHEN @Pagado = 1 THEN 'PAGADO / PENDIENTE POR LEGALIZAR' ELSE estado END
+                    WHERE id_anticipo = @IdAnticipo
+                    ";
                 }
 
             cmd.CommandText = sql;
@@ -475,11 +477,13 @@ namespace BackendAnticipos.Services
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
         }
-        public async Task<List<SolicitudAnticipo>> ConsultarLegalizarAnticiposAsync()
+        public async Task<List<SolicitudAnticipo>> ConsultarLegalizarAnticiposAsync(int idUsuario)
         {
             var lista = new List<SolicitudAnticipo>();
 
-            const string sql = @"
+            int idRol = await ObtenerRolUsuarioAsync(idUsuario);
+
+            var sql = @"
             SELECT
                 id_anticipo,
                 solicitante,
@@ -495,14 +499,28 @@ namespace BackendAnticipos.Services
                 retencion_iva,
                 retencion_ica
             FROM anticipos_solicitados
-            WHERE TRIM(estado) = 'PAGADO / PENDIENTE POR LEGALIZAR'
+            /**WHERE_CLAUSE**/
             ORDER BY fecha_solicitud DESC";
+
+            string whereClause = @"
+            WHERE TRIM(estado) IN (
+                'PAGADO / PENDIENTE POR LEGALIZAR',
+                'VALIDACION DE LEGALIZACION'
+            )";
+
+            if (!(idRol == 1 || idRol == 7))
+                whereClause += " AND id_solicitante = @IdUsuario";
+
+            sql = sql.Replace("/**WHERE_CLAUSE**/", whereClause);
 
             using var conn = new DB2Connection(_connectionString);
             await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
+
+            if (!(idRol == 1 || idRol == 7))
+                cmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -527,14 +545,34 @@ namespace BackendAnticipos.Services
 
             return lista;
         }
-        public async Task<bool> RegistrarLegalizacionAsync(int idAnticipo, bool legalizado, string quienLegaliza)
+        public async Task<bool> RegistrarLegalizacionAsync(
+        int idAnticipo,
+        bool legalizado,
+        string quienLegaliza,
+        decimal saldoAFavor,
+        decimal totalSoportes,
+        decimal retFuente,
+        decimal retIva,
+        decimal retIca,
+        decimal otrasDeducciones,
+        string? estado = null)
         {
             const string sql = @"
             UPDATE anticipos_solicitados
-            SET 
+            SET
                 tiene_legalizacion = @Legalizado,
-                estado = CASE WHEN @Legalizado = 1 THEN 'FINALIZADO' ELSE estado END,
-                quien_legaliza = @QuienLegaliza
+                estado = CASE
+                            WHEN @Estado IS NOT NULL AND @Estado <> '' THEN @Estado
+                            WHEN @Legalizado = 1 THEN 'FINALIZADO'
+                            ELSE estado
+                         END,
+                quien_legaliza   = @QuienLegaliza,
+                saldo_a_favor    = @SaldoAFavor,
+                total_soportes   = @TotalSoportes,
+                retencion_fuente = @RetFuente,
+                retencion_iva    = @RetIva,
+                retencion_ica    = @RetIca,
+                otras_deducciones = @OtrasDeducciones
             WHERE id_anticipo = @IdAnticipo
             ";
 
@@ -544,12 +582,44 @@ namespace BackendAnticipos.Services
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             cmd.Parameters.Add(new DB2Parameter("@Legalizado", DB2Type.SmallInt) { Value = legalizado ? 1 : 0 });
-            cmd.Parameters.Add(new DB2Parameter("@QuienLegaliza", DB2Type.Char) { Value = quienLegaliza ?? "" });
+            cmd.Parameters.Add(new DB2Parameter("@QuienLegaliza", DB2Type.VarChar) { Value = quienLegaliza ?? "" });
+            cmd.Parameters.Add(new DB2Parameter("@SaldoAFavor", DB2Type.Decimal) { Value = saldoAFavor });
+            cmd.Parameters.Add(new DB2Parameter("@TotalSoportes", DB2Type.Decimal) { Value = totalSoportes });
+            cmd.Parameters.Add(new DB2Parameter("@RetFuente", DB2Type.Decimal) { Value = retFuente });
+            cmd.Parameters.Add(new DB2Parameter("@RetIva", DB2Type.Decimal) { Value = retIva });
+            cmd.Parameters.Add(new DB2Parameter("@RetIca", DB2Type.Decimal) { Value = retIca });
+            cmd.Parameters.Add(new DB2Parameter("@OtrasDeducciones", DB2Type.Decimal) { Value = otrasDeducciones });
+            cmd.Parameters.Add(new DB2Parameter("@Estado", DB2Type.VarChar) { Value = (object?)estado ?? DBNull.Value });
             cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
 
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
-            await conn.CloseAsync();
             return rowsAffected > 0;
+        }
+        public async Task InsertarSoporteLegalizacionAsync(
+        int idAnticipo,
+        string nombreArchivo,
+        string rutaArchivo,
+        decimal montoSoporte,
+        string quienAdjunta)
+        {
+            const string sql = @"
+            INSERT INTO anticipos_legalizacion_soportes
+            (id_anticipo, nombre_archivo, ruta_archivo, monto_soporte, quien_adjunta)
+            VALUES (@IdAnticipo, @NombreArchivo, @RutaArchivo, @MontoSoporte, @QuienAdjunta)";
+
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
+            cmd.Parameters.Add(new DB2Parameter("@NombreArchivo", DB2Type.VarChar) { Value = nombreArchivo });
+            cmd.Parameters.Add(new DB2Parameter("@RutaArchivo", DB2Type.VarChar) { Value = rutaArchivo });
+            cmd.Parameters.Add(new DB2Parameter("@MontoSoporte", DB2Type.Decimal) { Value = montoSoporte });
+            cmd.Parameters.Add(new DB2Parameter("@QuienAdjunta", DB2Type.VarChar) { Value = quienAdjunta ?? "" });
+
+            await cmd.ExecuteNonQueryAsync();
         }
         public async Task<List<object>> ObtenerTotalPagadoPorMesAsync(int? anio = null, int? mes = null)
         {
@@ -649,6 +719,8 @@ namespace BackendAnticipos.Services
                 a.retencion_fuente,
                 a.retencion_iva,
                 a.retencion_ica,
+                a.otras_deducciones,
+                a.saldo_a_favor,
                 a.motivo_rechazo,
                 u.correo AS correo_solicitante
             FROM anticipos_solicitados a
@@ -689,8 +761,10 @@ namespace BackendAnticipos.Services
                     RetencionFuente = reader.IsDBNull(19) ? (decimal?)null : reader.GetDecimal(19),
                     RetencionIva = reader.IsDBNull(20) ? (decimal?)null : reader.GetDecimal(20),
                     RetencionIca = reader.IsDBNull(21) ? (decimal?)null : reader.GetDecimal(21),
-                    MotivoRechazo = reader.IsDBNull(22) ? null : reader.GetString(22).Trim(),
-                    CorreoSolicitante = reader.IsDBNull(23) ? null : reader.GetString(23).Trim()
+                    OtrasDeducciones = reader.IsDBNull(22) ? (decimal?)null : reader.GetDecimal(22),
+                    SaldoAFavor = reader.IsDBNull(23) ? (decimal?)null : reader.GetDecimal(23),
+                    MotivoRechazo = reader.IsDBNull(24) ? null : reader.GetString(24).Trim(),
+                    CorreoSolicitante = reader.IsDBNull(25) ? null : reader.GetString(25).Trim()
                 };
             }
 
@@ -820,6 +894,32 @@ namespace BackendAnticipos.Services
             cmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
             var result = await cmd.ExecuteScalarAsync();
             return result != null ? Convert.ToInt32(result) : 0;
+        }
+        public async Task<List<SoporteLegalizacionDto>> ObtenerSoportesLegalizacionAsync(int idAnticipo)
+        {
+            var lista = new List<SoporteLegalizacionDto>();
+            const string sql = @"
+            SELECT nombre_archivo, ruta_archivo, monto_soporte
+            FROM anticipos_legalizacion_soportes
+            WHERE id_anticipo = @IdAnticipo";
+
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                lista.Add(new SoporteLegalizacionDto
+                {
+                    NombreArchivo = reader.GetString(0),
+                    RutaArchivo = reader.GetString(1),
+                    MontoSoporte = reader.GetDecimal(2)
+                });
+            }
+            return lista;
         }
     }
 }

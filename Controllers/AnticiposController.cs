@@ -116,8 +116,8 @@ namespace BackendAnticipos.Controllers
                     if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
                         destinatarios.Add(dto.CorreoSolicitante);
 
-                    /*if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
-                        destinatarios.Add(dto.CorreoAprobador);*/
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        destinatarios.Add(dto.CorreoAprobador);
 
                     if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
                         destinatarios.Add("powerapps@recamier.com");
@@ -199,13 +199,13 @@ namespace BackendAnticipos.Controllers
                     if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
                         destinatarios.Add(dto.CorreoSolicitante);
 
-                    /*if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
-                        destinatarios.Add(dto.CorreoAprobador);*/
+                    if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
+                        destinatarios.Add(dto.CorreoAprobador);
 
                     destinatarios.Add("powerapps@recamier.com");
-                    /*destinatarios.Add("mcvaron@recamier.com");
+                    destinatarios.Add("mcvaron@recamier.com");
                     destinatarios.Add("lvergara@recamier.com");
-                    destinatarios.Add("cltapia@recamier.com");*/
+                    destinatarios.Add("cltapia@recamier.com");
 
                     destinatarios = destinatarios
                         .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -376,9 +376,9 @@ namespace BackendAnticipos.Controllers
                             destinatarios.Add(dto.CorreoSolicitante);
 
                             destinatarios.Add("powerapps@recamier.com");
-                            /*destinatarios.Add("almesa@recamier.com");
+                            destinatarios.Add("almesa@recamier.com");
                             destinatarios.Add("auxmlln@recamier.com");
-                            destinatarios.Add("flmora@recamier.com");*/
+                            destinatarios.Add("flmora@recamier.com");
 
                             destinatarios = destinatarios
                                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -389,7 +389,7 @@ namespace BackendAnticipos.Controllers
 
                         _logger.LogInformation("Correo de notificación enviado para estado 'PENDIENTE DE PAGO'.");
                     }
-                    else if (dto.Estado == "FINALIZADO")
+                    else if (dto.Estado == "RECHAZADO")
                     {
 
                         if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
@@ -555,13 +555,13 @@ namespace BackendAnticipos.Controllers
         }
 
         [HttpGet("consulta-legalizar-anticipos")]
-        public async Task<IActionResult> ConsultaLegalizarAnticipos()
+        public async Task<IActionResult> ConsultaLegalizarAnticipos([FromQuery] int idUsuario)
         {
             _logger.LogInformation("Iniciando consulta de anticipos por legalizar...");
 
             try
             {
-                var anticipos = await _informixService.ConsultarLegalizarAnticiposAsync();
+                var anticipos = await _informixService.ConsultarLegalizarAnticiposAsync(idUsuario);
 
                 if (anticipos == null || anticipos.Count == 0)
                 {
@@ -593,14 +593,70 @@ namespace BackendAnticipos.Controllers
         }
 
         [HttpPost("registrar-legalizacion")]
-        public async Task<IActionResult> RegistrarLegalizacion([FromBody] RegistrarLegalizacionDto dto)
+        public async Task<IActionResult> RegistrarLegalizacion([FromForm] RegistrarLegalizacionDto dto)
         {
             try
             {
                 if (dto == null || dto.IdAnticipo == 0)
                     return BadRequest(new { success = false, message = "Datos inválidos" });
 
-                var actualizado = await _informixService.RegistrarLegalizacionAsync(dto.IdAnticipo, dto.Legalizado, dto.QuienLegaliza);
+                bool esCambioSoloEstado =
+                    !string.IsNullOrWhiteSpace(dto.Estado) &&
+                    dto.Estado.Trim().Equals("FINALIZADO", StringComparison.OrdinalIgnoreCase);
+
+                if (!esCambioSoloEstado)
+                {
+                    // Validar archivos y montos
+                    if (dto.SoportesLegalizacion == null || dto.MontosSoporte == null
+                        || dto.SoportesLegalizacion.Count != dto.MontosSoporte.Count
+                        || dto.SoportesLegalizacion.Count == 0)
+                        return BadRequest(new
+                        { success = false, message = "Debes adjuntar al menos un archivo y monto por soporte." });
+
+                    var dir = Path.Combine(Directory.GetCurrentDirectory(), "Soportes");
+                    if (!Directory.Exists(dir))
+                        Directory.CreateDirectory(dir);
+
+                    for (int i = 0; i < dto.SoportesLegalizacion.Count; i++)
+                    {
+                        var archivo = dto.SoportesLegalizacion[i];
+                        var montoStr = dto.MontosSoporte[i];
+                        decimal.TryParse(montoStr, out decimal monto);
+
+                        if (archivo.Length > 0 && monto > 0)
+                        {
+                            var ext = Path.GetExtension(archivo.FileName);
+                            var fileName = $"{Guid.NewGuid()}{ext}";
+                            var rutaFisica = Path.Combine(dir, fileName);
+
+                            using var fs = new FileStream(rutaFisica, FileMode.Create);
+                            await archivo.CopyToAsync(fs);
+
+                            var rutaRelativa = Path.Combine("Soportes", fileName);
+
+                            await _informixService.InsertarSoporteLegalizacionAsync(
+                                dto.IdAnticipo,
+                                archivo.FileName,
+                                rutaRelativa,
+                                monto,
+                                dto.QuienLegaliza
+                            );
+                        }
+                    }
+                }
+
+                var actualizado = await _informixService.RegistrarLegalizacionAsync(
+                    dto.IdAnticipo,
+                    dto.Legalizado,
+                    dto.QuienLegaliza,
+                    dto.SaldoAFavor ?? 0,
+                    dto.TotalSoportes ?? 0,
+                    dto.RetFuente ?? 0,
+                    dto.RetIva ?? 0,
+                    dto.RetIca ?? 0,
+                    dto.OtrasDeducciones ?? 0,
+                    dto.Estado
+                );
 
                 if (actualizado)
                 {
@@ -608,26 +664,24 @@ namespace BackendAnticipos.Controllers
 
                     if (anticipo.Estado == "FINALIZADO")
                     {
-                        var correoLegalizador = await _informixService.ObtenerCorreoPorRolAsync("Legalizador");
-
                         var destinatarios = new List<string>();
 
                         if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
                             destinatarios.Add(anticipo.CorreoSolicitante);
 
-                            if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
-                             destinatarios.Add(anticipo.CorreoAprobador);
+                        /*if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
+                            destinatarios.Add(anticipo.CorreoAprobador);*/
 
-                        //if (!string.IsNullOrWhiteSpace(correoLegalizador))
-                        //destinatarios.Add(correoLegalizador);
-
-                            destinatarios.Add("powerapps@recamier.com");
-                            destinatarios.Add("mcvaron@recamier.com");
-                            destinatarios.Add("lvergara@recamier.com");
-                            destinatarios.Add("cltapia@recamier.com");
-                            destinatarios.Add("flmora@recamier.com");
-                            destinatarios.Add("almesa@recamier.com");
-                            destinatarios.Add("auxmlln@recamier.com");
+                        destinatarios.AddRange(new[]
+                        {
+                            "powerapps@recamier.com",
+                            /*"mcvaron@recamier.com",
+                            "lvergara@recamier.com",
+                            "cltapia@recamier.com",
+                            "flmora@recamier.com",
+                            "almesa@recamier.com",
+                            "auxmlln@recamier.com"*/
+                        });
 
                         destinatarios = destinatarios
                             .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -635,7 +689,6 @@ namespace BackendAnticipos.Controllers
                             .ToList();
 
                         await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
-
                         _logger.LogInformation("Correo de notificación enviado para estado 'FINALIZADO'.");
                     }
 
@@ -825,6 +878,8 @@ namespace BackendAnticipos.Controllers
               <tr><td style='padding:8px;border:1px solid #ccc;'>Retención Fuente</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.RetencionFuente.HasValue ? dto.RetencionFuente.Value.ToString("C0") : "0")}</td></tr>
               <tr><td style='padding:8px;border:1px solid #ccc;'>Retención ICA</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.RetencionIca.HasValue ? dto.RetencionIca.Value.ToString("C0") : "0")}</td></tr>
               <tr><td style='padding:8px;border:1px solid #ccc;'>Retención IVA</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.RetencionIva.HasValue ? dto.RetencionIva.Value.ToString("C0") : "0")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Otras Deducciones</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.OtrasDeducciones.HasValue ? dto.OtrasDeducciones.Value.ToString("C0") : "0")}</td></tr>
+              <tr><td style='padding:8px;border:1px solid #ccc;'>Saldo a Favor</td><td style='padding:8px;border:1px solid #ccc;'>{(dto.SaldoAFavor.HasValue ? dto.SaldoAFavor.Value.ToString("C0") : "0")}</td></tr>
               <tr><td style='padding:8px;border:1px solid #ccc;'>Valor a Pagar</td><td style='padding:8px;border:1px solid #ccc;'>{dto.ValorAPagar.ToString("C0")}</td></tr>
             </table>
             <div style='margin:12px 0 0 0;'>
@@ -863,16 +918,39 @@ namespace BackendAnticipos.Controllers
         {
             if (string.IsNullOrEmpty(soporteRelativo)) return;
 
-            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), soporteRelativo);
+            // Si hay varios archivos, separa por punto y coma
+            var archivos = soporteRelativo.Split(';', StringSplitOptions.RemoveEmptyEntries);
 
-            if (System.IO.File.Exists(fullPath))
+            foreach (var ruta in archivos)
             {
-                mail.Attachments.Add(new Attachment(fullPath));
-                _logger.LogInformation("Adjunto agregado: {Archivo}", fullPath);
+                var fullPath = Path.Combine(Directory.GetCurrentDirectory(), ruta.Trim());
+                if (System.IO.File.Exists(fullPath))
+                {
+                    mail.Attachments.Add(new Attachment(fullPath));
+                    _logger.LogInformation("Adjunto agregado: {Archivo}", fullPath);
+                }
+                else
+                {
+                    _logger.LogWarning("Archivo no encontrado para adjunto: {Archivo}", fullPath);
+                }
             }
-            else
+        }
+
+        [HttpGet("soportes-legalizacion")]
+        public async Task<IActionResult> GetSoportesLegalizacion([FromQuery] int idAnticipo)
+        {
+            if (idAnticipo <= 0)
+                return BadRequest(new { success = false, message = "ID de anticipo inválido" });
+
+            try
             {
-                _logger.LogWarning("Archivo no encontrado para adjunto: {Archivo}", fullPath);
+                var soportes = await _informixService.ObtenerSoportesLegalizacionAsync(idAnticipo);
+                return Ok(new { success = true, data = soportes });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al consultar soportes de legalización");
+                return StatusCode(500, new { success = false, message = "Error interno al consultar soportes" });
             }
         }
 
