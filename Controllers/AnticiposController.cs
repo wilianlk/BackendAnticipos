@@ -954,5 +954,39 @@ namespace BackendAnticipos.Controllers
             }
         }
 
+        [HttpGet("pendientes-aprobador-correo")]
+        public async Task<IActionResult> ConsultarPendientesPorAprobadorCorreo([FromQuery] string correoAprobador)
+        {
+            _logger.LogInformation("Consultando anticipos pendientes para aprobador con correo: {Correo}", correoAprobador);
+
+            if (string.IsNullOrWhiteSpace(correoAprobador))
+                return BadRequest(new { success = false, message = "Correo de aprobador inválido." });
+
+            try
+            {
+                var anticipos = await _informixService.ConsultarPendientesPorCorreoAsync(correoAprobador);
+
+                if (anticipos == null || anticipos.Count == 0)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "No se encontraron anticipos pendientes para este aprobador."
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    total = anticipos.Count,
+                    data = anticipos
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al consultar anticipos pendientes por correo");
+                return StatusCode(500, new { success = false, message = "Error interno al consultar anticipos pendientes." });
+            }
+        }
     }
 }
