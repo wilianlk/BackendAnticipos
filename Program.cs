@@ -48,7 +48,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "http://192.168.20.30:8089",
-            "https://portalpagos.recamier.com",
+            "http://anticiposproveedores.recamier.com:8083",
             "http://localhost:3000"
         )
         .AllowAnyMethod()
@@ -116,15 +116,18 @@ if (app.Environment.IsProduction())
 }
 else
 {
-    app.UseCors("AllowAllOrigins"); // En desarrollo, permitir cualquier origen
+    app.UseCors("AllowAllOrigins");
 }
 
-// Middleware para servir el frontend
-app.UseDefaultFiles(); // Redirige automáticamente a index.html
+app.UseDefaultFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
     {
+        ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+        ctx.Context.Response.Headers.Append("Pragma", "no-cache");
+        ctx.Context.Response.Headers.Append("Expires", "0");
+
         Console.WriteLine($"Sirviendo archivo estático: {ctx.File.PhysicalPath}");
     }
 });
@@ -132,7 +135,6 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseAuthorization();
 app.MapControllers();
 
-// 📌 React frontend
 app.MapFallbackToFile("index.html");
 
 app.Run();
