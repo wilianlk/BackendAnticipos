@@ -474,7 +474,6 @@ namespace BackendAnticipos.Controllers
 
                 List<string> archivosGuardados = new();
 
-                // 1. Guardar múltiples archivos soporte
                 if (dto.SoportesPago != null && dto.SoportesPago.Count > 0)
                 {
                     var dir = Path.Combine(Directory.GetCurrentDirectory(), "Soportes");
@@ -662,7 +661,7 @@ namespace BackendAnticipos.Controllers
                 {
                     var anticipo = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(dto.IdAnticipo);
 
-                    if (anticipo.Estado == "FINALIZADO")
+                    if (anticipo.Estado == "FINALIZADO" || dto.Estado?.Trim().ToUpper() == "VALIDACION DE LEGALIZACION")
                     {
                         var destinatarios = new List<string>();
 
@@ -671,6 +670,17 @@ namespace BackendAnticipos.Controllers
 
                         /*if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
                             destinatarios.Add(anticipo.CorreoAprobador);*/
+
+                        if (dto.Estado.Trim().ToUpper() == "VALIDACION DE LEGALIZACION")
+                        {
+                            destinatarios.AddRange(new[]
+                            {
+                                "mcvaron@recamier.com",
+                                "lvergara@recamier.com",
+                                "cltapia@recamier.com",
+                                "vcastro@recamier.com"
+                            });
+                        }
 
                         destinatarios.AddRange(new[]
                         {
@@ -683,6 +693,7 @@ namespace BackendAnticipos.Controllers
                             "auxmlln@recamier.com"*/
                         });
 
+                        
                         destinatarios = destinatarios
                             .Where(x => !string.IsNullOrWhiteSpace(x))
                             .Distinct()
