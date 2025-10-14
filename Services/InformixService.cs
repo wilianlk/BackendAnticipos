@@ -505,7 +505,8 @@ namespace BackendAnticipos.Services
             string whereClause = @"
             WHERE TRIM(estado) IN (
                 'PAGADO / PENDIENTE POR LEGALIZAR',
-                'VALIDACION DE LEGALIZACION'
+                'VALIDACION DE LEGALIZACION',
+                'RECHAZADO POR LEGALIZACION'
             )";
 
             if (!(idRol == 1 || idRol == 7))
@@ -921,42 +922,72 @@ namespace BackendAnticipos.Services
             }
             return lista;
         }
+        public async Task<bool> EliminarSoporteLegalizacionAsync(int idAnticipo, string rutaArchivo)
+        {
+            const string sql = @"
+            DELETE FROM anticipos_legalizacion_soportes
+            WHERE id_anticipo = @IdAnticipo
+              AND TRIM(ruta_archivo) = TRIM(@RutaArchivo)";
+
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
+            cmd.Parameters.Add(new DB2Parameter("@RutaArchivo", DB2Type.VarChar) { Value = rutaArchivo });
+
+            var result = await cmd.ExecuteNonQueryAsync();
+
+            try
+            {
+                var fullPath = Path.Combine(Directory.GetCurrentDirectory(), rutaArchivo);
+                if (File.Exists(fullPath))
+                    File.Delete(fullPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Advertencia: no se pudo eliminar el archivo físico. {ex.Message}");
+            }
+
+            return result > 0;
+        }
         public async Task<List<SolicitudAnticipo>> ConsultarPendientesPorCorreoAsync(string correoAprobador)
         {
             var lista = new List<SolicitudAnticipo>();
 
             const string sql = @"
-        SELECT 
-            id_anticipo,
-            id_solicitante,
-            solicitante,
-            aprobador_id,
-            correo_aprobador,
-            proveedor,
-            nit_proveedor,
-            concepto,
-            valor_anticipo,
-            valor_a_pagar,
-            pagado,
-            soporte_nombre,
-            soporte_pago_nombre,
-            fecha_solicitud,
-            fecha_aprobacion,
-            estado,
-            aprop_vp,
-            vp,
-            tiene_legalizacion,
-            quien_legaliza,
-            retencion_fuente,
-            retencion_iva,
-            retencion_ica,
-            motivo_rechazo,
-            detalle_motivo_rechazo,
-            otras_deducciones
-        FROM anticipos_solicitados
-        WHERE TRIM(LOWER(correo_aprobador)) = TRIM(LOWER(@CorreoAprobador))
-          AND UPPER(TRIM(estado)) = 'PENDIENTE APROBACION'
-        ORDER BY fecha_solicitud DESC";
+            SELECT 
+                id_anticipo,
+                id_solicitante,
+                solicitante,
+                aprobador_id,
+                correo_aprobador,
+                proveedor,
+                nit_proveedor,
+                concepto,
+                valor_anticipo,
+                valor_a_pagar,
+                pagado,
+                soporte_nombre,
+                soporte_pago_nombre,
+                fecha_solicitud,
+                fecha_aprobacion,
+                estado,
+                aprop_vp,
+                vp,
+                tiene_legalizacion,
+                quien_legaliza,
+                retencion_fuente,
+                retencion_iva,
+                retencion_ica,
+                motivo_rechazo,
+                detalle_motivo_rechazo,
+                otras_deducciones
+            FROM anticipos_solicitados
+            WHERE TRIM(LOWER(correo_aprobador)) = TRIM(LOWER(@CorreoAprobador))
+              AND UPPER(TRIM(estado)) = 'PENDIENTE APROBACION'
+            ORDER BY fecha_solicitud DESC";
 
             await using var conn = new DB2Connection(_connectionString);
             await conn.OpenAsync();
@@ -1001,6 +1032,25 @@ namespace BackendAnticipos.Services
 
             return lista;
         }
+        public async Task<bool> ActualizarEstadoLegalizacionAsync(int idAnticipo, string estado, string quienLegaliza)
+        {
+            const string sql = @"
+            UPDATE anticipos_solicitados
+            SET estado = @Estado,
+                quien_legaliza = @QuienLegaliza
+            WHERE id_anticipo = @IdAnticipo";
 
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@Estado", DB2Type.VarChar) { Value = estado });
+            cmd.Parameters.Add(new DB2Parameter("@QuienLegaliza", DB2Type.VarChar) { Value = quienLegaliza ?? "" });
+            cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
     }
 }

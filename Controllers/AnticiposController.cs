@@ -599,6 +599,52 @@ namespace BackendAnticipos.Controllers
                 if (dto == null || dto.IdAnticipo == 0)
                     return BadRequest(new { success = false, message = "Datos inválidos" });
 
+                if (dto.Estado?.Trim().ToUpper() == "RECHAZADO POR LEGALIZACION")
+                {
+                    bool resultado = await _informixService.ActualizarEstadoLegalizacionAsync(
+                        dto.IdAnticipo,
+                        "RECHAZADO POR LEGALIZACION",
+                        dto.QuienLegaliza
+                    );
+
+                    if (resultado)
+                    {
+                        _logger.LogInformation(
+                            "Anticipo {IdAnticipo} fue marcado como 'RECHAZADO POR LEGALIZACION' por {User}.",
+                            dto.IdAnticipo, dto.QuienLegaliza);
+
+                        var anticipo = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(dto.IdAnticipo);
+                        var destinatarios = new List<string>();
+
+                        if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
+                            destinatarios.Add(anticipo.CorreoSolicitante);
+
+                        destinatarios.AddRange(new[]
+                        {
+                            "powerapps@recamier.com",
+                            /* Si quieres incluir también estos, descomenta:
+                            "mcvaron@recamier.com",
+                            "lvergara@recamier.com",
+                            "cltapia@recamier.com",
+                            "flmora@recamier.com",
+                            "almesa@recamier.com",
+                            "auxmlln@recamier.com" */
+                        });
+
+                        destinatarios = destinatarios
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Distinct()
+                            .ToList();
+
+                        await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
+                        _logger.LogInformation("Correo de notificación enviado para estado 'RECHAZADO POR LEGALIZACION'.");
+
+                        return Ok(new { success = true, message = "Anticipo rechazado por legalización." });
+                    }
+
+                    return StatusCode(500, new { success = false, message = "No se pudo actualizar el estado a RECHAZADO POR LEGALIZACION." });
+                }
+
                 bool esCambioSoloEstado =
                     !string.IsNullOrWhiteSpace(dto.Estado) &&
                     dto.Estado.Trim().Equals("FINALIZADO", StringComparison.OrdinalIgnoreCase);
@@ -673,13 +719,13 @@ namespace BackendAnticipos.Controllers
 
                         if (dto.Estado.Trim().ToUpper() == "VALIDACION DE LEGALIZACION")
                         {
-                            destinatarios.AddRange(new[]
+                            /*destinatarios.AddRange(new[]
                             {
                                 "mcvaron@recamier.com",
                                 "lvergara@recamier.com",
                                 "cltapia@recamier.com",
                                 "vcastro@recamier.com"
-                            });
+                            });*/
                         }
 
                         destinatarios.AddRange(new[]
@@ -962,6 +1008,34 @@ namespace BackendAnticipos.Controllers
             {
                 _logger.LogError(ex, "Error al consultar soportes de legalización");
                 return StatusCode(500, new { success = false, message = "Error interno al consultar soportes" });
+            }
+        }
+
+        [HttpDelete("eliminar-soporte-legalizacion")]
+        public async Task<IActionResult> EliminarSoporteLegalizacion(
+        [FromQuery] int idAnticipo,
+        [FromQuery] string rutaArchivo)
+        {
+            if (idAnticipo <= 0 || string.IsNullOrWhiteSpace(rutaArchivo))
+                return BadRequest(new { success = false, message = "Parámetros inválidos." });
+
+            try
+            {
+                var eliminado = await _informixService.EliminarSoporteLegalizacionAsync(idAnticipo, rutaArchivo);
+
+                if (eliminado)
+                {
+                    _logger.LogInformation("Soporte eliminado correctamente. Anticipo {IdAnticipo}, Ruta {RutaArchivo}", idAnticipo, rutaArchivo);
+                    return Ok(new { success = true, message = "Soporte eliminado correctamente." });
+                }
+
+                _logger.LogWarning("No se encontró el soporte o no se pudo eliminar. Anticipo {IdAnticipo}, Ruta {RutaArchivo}", idAnticipo, rutaArchivo);
+                return NotFound(new { success = false, message = "No se encontró el soporte o no se pudo eliminar." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al eliminar el soporte. Anticipo {IdAnticipo}, Ruta {RutaArchivo}", idAnticipo, rutaArchivo);
+                return StatusCode(500, new { success = false, message = "Error interno al eliminar el soporte." });
             }
         }
 

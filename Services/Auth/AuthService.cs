@@ -18,7 +18,6 @@ namespace BackendAnticipos.Services.Auth
                 : configuration.GetConnectionString("InformixConnectionProduction");
         }
 
-        // LOGIN: retorna usuario y lista de roles
         public async Task<(bool IsValid, List<string> Roles, int? IdUsuario, string Usuario)> ValidarUsuarioAsync(string correo, string password)
         {
             if (string.IsNullOrWhiteSpace(correo) || !correo.Trim().ToLower().EndsWith("@recamier.com"))
