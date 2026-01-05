@@ -14,6 +14,7 @@
         public decimal? RetIca { get; set; }
         public decimal? OtrasDeducciones { get; set; }
         public string? Estado { get; set; }
+        public string? MotivoRechazoLegalizacion { get; set; }
     }
 
 }

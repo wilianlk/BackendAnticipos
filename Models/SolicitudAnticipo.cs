@@ -36,6 +36,8 @@ namespace BackendAnticipos.Models
         public string? SoportesLegalizacionNombre { get; set; }
         public decimal? SaldoAFavor { get; set; }
         public decimal? TotalSoportes { get; set; }
+        public string? MotivoRechazoLegalizacion { get; set; }
+
 
         [NotMapped]
         public List<IFormFile>? Soportes { get; set; }

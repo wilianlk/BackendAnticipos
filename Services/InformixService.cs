@@ -497,7 +497,8 @@ namespace BackendAnticipos.Services
                 tiene_legalizacion,
                 retencion_fuente,
                 retencion_iva,
-                retencion_ica
+                retencion_ica,
+                motivo_rechazo_legalizacion
             FROM anticipos_solicitados
             /**WHERE_CLAUSE**/
             ORDER BY fecha_solicitud DESC";
@@ -540,7 +541,8 @@ namespace BackendAnticipos.Services
                     TieneLegalizacion = reader.IsDBNull(9) ? null : reader.GetString(9).Trim(),
                     RetencionFuente = reader.IsDBNull(10) ? null : reader.GetDecimal(10),
                     RetencionIva = reader.IsDBNull(11) ? null : reader.GetDecimal(11),
-                    RetencionIca = reader.IsDBNull(12) ? null : reader.GetDecimal(12)
+                    RetencionIca = reader.IsDBNull(12) ? null : reader.GetDecimal(12),
+                    MotivoRechazoLegalizacion = reader.IsDBNull(13) ? null : reader.GetString(13).Trim()
                 });
             }
 
@@ -614,11 +616,22 @@ namespace BackendAnticipos.Services
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
 
+            static string ToDbSafeAnsi(string input)
+            {
+                if (string.IsNullOrEmpty(input)) return "";
+                var normalized = input.Normalize(System.Text.NormalizationForm.FormD);
+                var chars = normalized
+                    .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                                != System.Globalization.UnicodeCategory.NonSpacingMark)
+                    .Select(c => c <= 0xFF ? c : '-');
+                return new string(chars.ToArray()).Normalize(System.Text.NormalizationForm.FormC);
+            }
+
             cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
-            cmd.Parameters.Add(new DB2Parameter("@NombreArchivo", DB2Type.VarChar) { Value = nombreArchivo });
-            cmd.Parameters.Add(new DB2Parameter("@RutaArchivo", DB2Type.VarChar) { Value = rutaArchivo });
+            cmd.Parameters.Add(new DB2Parameter("@NombreArchivo", DB2Type.VarChar) { Value = ToDbSafeAnsi(nombreArchivo) });
+            cmd.Parameters.Add(new DB2Parameter("@RutaArchivo", DB2Type.VarChar) { Value = ToDbSafeAnsi(rutaArchivo) });
             cmd.Parameters.Add(new DB2Parameter("@MontoSoporte", DB2Type.Decimal) { Value = montoSoporte });
-            cmd.Parameters.Add(new DB2Parameter("@QuienAdjunta", DB2Type.VarChar) { Value = quienAdjunta ?? "" });
+            cmd.Parameters.Add(new DB2Parameter("@QuienAdjunta", DB2Type.VarChar) { Value = ToDbSafeAnsi(quienAdjunta ?? "") });
 
             await cmd.ExecuteNonQueryAsync();
         }
@@ -1032,25 +1045,31 @@ namespace BackendAnticipos.Services
 
             return lista;
         }
-        public async Task<bool> ActualizarEstadoLegalizacionAsync(int idAnticipo, string estado, string quienLegaliza)
+        public async Task<bool> ActualizarMotivoRechazoAsync(int idAnticipo, string motivo, string estado)
         {
-            const string sql = @"
-            UPDATE anticipos_solicitados
-            SET estado = @Estado,
-                quien_legaliza = @QuienLegaliza
-            WHERE id_anticipo = @IdAnticipo";
+            try
+            {
+                using var conn = new DB2Connection(_connectionString);
+                await conn.OpenAsync();
 
-            using var conn = new DB2Connection(_connectionString);
-            await conn.OpenAsync();
+                string sql = @"
+                UPDATE anticipos_solicitados
+                SET motivo_rechazo_legalizacion = ?, estado = ?
+                WHERE id_anticipo = ?";
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
-            cmd.Parameters.Add(new DB2Parameter("@Estado", DB2Type.VarChar) { Value = estado });
-            cmd.Parameters.Add(new DB2Parameter("@QuienLegaliza", DB2Type.VarChar) { Value = quienLegaliza ?? "" });
-            cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer) { Value = idAnticipo });
+                using var cmd = new DB2Command(sql, conn);
+                cmd.Parameters.Add(new DB2Parameter("motivo", motivo));
+                cmd.Parameters.Add(new DB2Parameter("estado", estado));
+                cmd.Parameters.Add(new DB2Parameter("id", idAnticipo));
 
-            var rows = await cmd.ExecuteNonQueryAsync();
-            return rows > 0;
+                int filas = await cmd.ExecuteNonQueryAsync();
+                return filas > 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al actualizar motivo de rechazo: {ex.Message}");
+                return false;
+            }
         }
     }
 }

@@ -601,10 +601,13 @@ namespace BackendAnticipos.Controllers
 
                 if (dto.Estado?.Trim().ToUpper() == "RECHAZADO POR LEGALIZACION")
                 {
-                    bool resultado = await _informixService.ActualizarEstadoLegalizacionAsync(
-                        dto.IdAnticipo,
-                        "RECHAZADO POR LEGALIZACION",
-                        dto.QuienLegaliza
+                    if (string.IsNullOrWhiteSpace(dto.MotivoRechazoLegalizacion))
+                        return BadRequest(new { success = false, message = "Debe ingresar un motivo de rechazo." });
+
+                    bool resultado = await _informixService.ActualizarMotivoRechazoAsync(
+                     dto.IdAnticipo,
+                     dto.MotivoRechazoLegalizacion,
+                     dto.Estado
                     );
 
                     if (resultado)
@@ -622,13 +625,12 @@ namespace BackendAnticipos.Controllers
                         destinatarios.AddRange(new[]
                         {
                             "powerapps@recamier.com",
-                            /* Si quieres incluir también estos, descomenta:
                             "mcvaron@recamier.com",
                             "lvergara@recamier.com",
                             "cltapia@recamier.com",
                             "flmora@recamier.com",
                             "almesa@recamier.com",
-                            "auxmlln@recamier.com" */
+                            "auxmlln@recamier.com"
                         });
 
                         destinatarios = destinatarios
@@ -714,18 +716,18 @@ namespace BackendAnticipos.Controllers
                         if (!string.IsNullOrWhiteSpace(anticipo.CorreoSolicitante))
                             destinatarios.Add(anticipo.CorreoSolicitante);
 
-                        /*if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
-                            destinatarios.Add(anticipo.CorreoAprobador);*/
+                        if (!string.IsNullOrWhiteSpace(anticipo.CorreoAprobador))
+                            destinatarios.Add(anticipo.CorreoAprobador);
 
                         if (dto.Estado.Trim().ToUpper() == "VALIDACION DE LEGALIZACION")
                         {
-                            /*destinatarios.AddRange(new[]
+                            destinatarios.AddRange(new[]
                             {
                                 "mcvaron@recamier.com",
                                 "lvergara@recamier.com",
                                 "cltapia@recamier.com",
                                 "vcastro@recamier.com"
-                            });*/
+                            });
                         }
 
                         destinatarios.AddRange(new[]
