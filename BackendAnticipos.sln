@@ -1,9 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.12.35707.178 d17.12
+VisualStudioVersion = 17.12.35707.178
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BackendAnticipos", "BackendAnticipos.csproj", "{0D8961A2-ECCE-4DE1-BED1-12B65C69D1C7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Anticipos.Worker", "..\Anticipos.Worker\Anticipos.Worker.csproj", "{55698C11-A190-442A-87FD-EE53B1CDF178}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Anticipos.Core", "..\Anticipos.Core\Anticipos.Core.csproj", "{6850692F-CEC9-47DE-96CF-A27B223C1703}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,8 +19,19 @@ Global
 		{0D8961A2-ECCE-4DE1-BED1-12B65C69D1C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0D8961A2-ECCE-4DE1-BED1-12B65C69D1C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0D8961A2-ECCE-4DE1-BED1-12B65C69D1C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55698C11-A190-442A-87FD-EE53B1CDF178}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55698C11-A190-442A-87FD-EE53B1CDF178}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55698C11-A190-442A-87FD-EE53B1CDF178}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55698C11-A190-442A-87FD-EE53B1CDF178}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6850692F-CEC9-47DE-96CF-A27B223C1703}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6850692F-CEC9-47DE-96CF-A27B223C1703}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6850692F-CEC9-47DE-96CF-A27B223C1703}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6850692F-CEC9-47DE-96CF-A27B223C1703}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {490FCD94-E9AE-425C-AE78-F8850706BF15}
 	EndGlobalSection
 EndGlobal
