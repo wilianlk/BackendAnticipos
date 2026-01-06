@@ -1075,5 +1075,43 @@ namespace BackendAnticipos.Controllers
                 return StatusCode(500, new { success = false, message = "Error interno al consultar anticipos pendientes." });
             }
         }
+
+        [HttpPost("actualizar-motivo-rechazo")]
+        public async Task<IActionResult> ActualizarMotivoRechazo([FromBody] ActualizarMotivoRechazoDto dto)
+        {
+            _logger.LogInformation(
+                "Actualizando motivo de rechazo. Anticipo {IdAnticipo}",
+                dto?.IdAnticipo
+            );
+
+            if (dto == null || dto.IdAnticipo <= 0)
+            {
+                _logger.LogWarning("Datos inválidos al actualizar motivo de rechazo.");
+                return BadRequest(new { success = false, message = "Datos inválidos." });
+            }
+
+            var ok = await _informixService.ActualizarMotivoRechazoAnticipoAsync(
+                dto.IdAnticipo,
+                dto.MotivoRechazo,
+                dto.DetalleMotivoRechazo
+            );
+
+            if (!ok)
+            {
+                _logger.LogError(
+                    "No se pudo actualizar motivo de rechazo. Anticipo {IdAnticipo}",
+                    dto.IdAnticipo
+                );
+                return StatusCode(500, new { success = false, message = "No se pudo actualizar el motivo de rechazo." });
+            }
+
+            _logger.LogInformation(
+                "Motivo de rechazo actualizado correctamente. Anticipo {IdAnticipo}",
+                dto.IdAnticipo
+            );
+
+            return Ok(new { success = true, message = "Motivo de rechazo actualizado correctamente." });
+        }
+
     }
 }

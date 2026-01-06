@@ -1071,5 +1071,53 @@ namespace BackendAnticipos.Services
                 return false;
             }
         }
+
+        public async Task<bool> ActualizarMotivoRechazoAnticipoAsync(
+        int idAnticipo,
+        string? motivoRechazo,
+        string? detalleMotivoRechazo)
+        {
+            Console.WriteLine($"Actualizando motivo de rechazo. Anticipo: {idAnticipo}");
+
+            const string sql = @"
+            UPDATE anticipos_solicitados
+            SET
+                motivo_rechazo = @MotivoRechazo,
+                detalle_motivo_rechazo = @DetalleMotivoRechazo,
+                estado = 'RECHAZADO'
+            WHERE id_anticipo = @IdAnticipo";
+
+            using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            cmd.Parameters.Add(new DB2Parameter("@MotivoRechazo", DB2Type.VarChar)
+            {
+                Value = (object?)motivoRechazo ?? DBNull.Value
+            });
+
+            cmd.Parameters.Add(new DB2Parameter("@DetalleMotivoRechazo", DB2Type.VarChar)
+            {
+                Value = (object?)detalleMotivoRechazo ?? DBNull.Value
+            });
+
+            cmd.Parameters.Add(new DB2Parameter("@IdAnticipo", DB2Type.Integer)
+            {
+                Value = idAnticipo
+            });
+
+            var result = await cmd.ExecuteNonQueryAsync();
+
+            Console.WriteLine(
+                result > 0
+                    ? $"Motivo de rechazo actualizado correctamente. Anticipo: {idAnticipo}"
+                    : $"No se actualizó ningún registro. Anticipo: {idAnticipo}"
+            );
+
+            return result > 0;
+        }
+
     }
 }
