@@ -2,6 +2,7 @@
 using BackendAnticipos.Models.Settings;
 using BackendAnticipos.Services.Auth;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using System.IO;
 
@@ -71,6 +72,11 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
+});
 
 app.UseStaticFiles(new StaticFileOptions
 {

@@ -1,6 +1,5 @@
 ﻿using BackendAnticipos.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace BackendAnticipos.Controllers.Auth
@@ -16,77 +15,67 @@ namespace BackendAnticipos.Controllers.Auth
             _authService = authService;
         }
 
-        // LOGIN SOLO POR CORREO (ahora retorna lista de roles)
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.Correo) || string.IsNullOrWhiteSpace(request.Password))
+            if (Request?.Host.HasValue == true &&
+                Request.Host.Host.Equals("192.168.20.30", System.StringComparison.OrdinalIgnoreCase) &&
+                Request.Host.Port == 8089)
             {
-                return BadRequest(new { success = false, message = "Datos de login incompletos." });
+                return StatusCode(403, new
+                {
+                    success = false,
+                    message = "El dominio utilizado para iniciar sesión no está permitido. Por favor ingrese por el dominio oficial."
+                });
             }
 
-            var (isValid, roles, idUsuario, usuario) = await _authService.ValidarUsuarioAsync(request.Correo, request.Password);
+            if (request == null)
+                return BadRequest(new { success = false, message = "Datos incompletos." });
 
-            if (isValid)
+            if (!string.IsNullOrWhiteSpace(request.Code))
+            {
+                var result = await _authService.ValidarUsuarioPorSsoCodeAsync(request.Code);
+
+                if (result.IsValid)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        id_usuario = result.IdUsuario,
+                        usuario = result.Usuario,
+                        correo = result.Correo,
+                        roles = result.Roles
+                    });
+                }
+
+                return Unauthorized(new { success = false, message = "Código SSO inválido o expirado." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Correo) || string.IsNullOrWhiteSpace(request.Password))
+                return BadRequest(new { success = false, message = "Datos incompletos." });
+
+            var login = await _authService.ValidarUsuarioAsync(request.Correo, request.Password);
+
+            if (login.IsValid)
             {
                 return Ok(new
                 {
                     success = true,
-                    id_usuario = idUsuario,
-                    usuario = usuario,
-                    correo = request.Correo,
-                    roles = roles // ahora es lista
+                    id_usuario = login.IdUsuario,
+                    usuario = login.Usuario,
+                    correo = login.Correo,
+                    roles = login.Roles
                 });
             }
-            else
-            {
-                return Unauthorized(new { success = false, message = "Credenciales inválidas." });
-            }
+
+            return Unauthorized(new { success = false, message = "Credenciales inválidas." });
         }
 
-        // REGISTRO: usuario, correo, password, roles (lista)
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
-        {
-            if (request == null ||
-                string.IsNullOrWhiteSpace(request.Usuario) ||
-                string.IsNullOrWhiteSpace(request.Correo) ||
-                string.IsNullOrWhiteSpace(request.Password) ||
-                request.Roles == null || request.Roles.Count == 0)
-            {
-                return BadRequest(new { success = false, message = "Datos de registro incompletos." });
-            }
-
-            var registrado = await _authService.RegistrarUsuarioAsync(
-                request.Usuario,
-                request.Password,
-                request.Roles,
-                request.Correo
-            );
-
-            if (registrado)
-            {
-                return Ok(new { success = true, message = "Usuario registrado exitosamente." });
-            }
-            else
-            {
-                return Conflict(new { success = false, message = "El usuario o correo ya existe, o uno de los roles es inválido." });
-            }
-        }
-
-        // DTOs internos del controlador (ajustados)
         public class LoginRequest
         {
-            public string Correo { get; set; }
-            public string Password { get; set; }
-        }
-
-        public class RegisterRequest
-        {
-            public string Usuario { get; set; }
-            public string Correo { get; set; }
-            public string Password { get; set; }
-            public List<string> Roles { get; set; } // ahora es lista
+            public string? Correo { get; set; }
+            public string? Password { get; set; }
+            public string? Code { get; set; }
         }
     }
 }

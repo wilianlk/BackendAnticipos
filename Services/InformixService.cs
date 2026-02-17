@@ -909,6 +909,40 @@ namespace BackendAnticipos.Services
             var result = await cmd.ExecuteScalarAsync();
             return result != null ? Convert.ToInt32(result) : 0;
         }
+
+        public async Task<int> ReasignarAprobadorAnticiposAsync(IEnumerable<int> idsAnticipo, int nuevoAprobadorId, string nuevoCorreoAprobador)
+        {
+            var ids = idsAnticipo?.Distinct().ToList() ?? new List<int>();
+            if (ids.Count == 0)
+                return 0;
+
+            if (nuevoAprobadorId <= 0)
+                throw new ArgumentException("Nuevo aprobador inválido", nameof(nuevoAprobadorId));
+
+            nuevoCorreoAprobador = (nuevoCorreoAprobador ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(nuevoCorreoAprobador))
+                throw new ArgumentException("Nuevo correo aprobador inválido", nameof(nuevoCorreoAprobador));
+
+            var inClause = string.Join(",", ids.Select((_, i) => $"@Id{i}"));
+            var sql = $@"
+                UPDATE anticipos_solicitados
+                SET aprobador_id = @NuevoAprobadorId,
+                    correo_aprobador = @NuevoCorreoAprobador
+                WHERE id_anticipo IN ({inClause})";
+
+            await using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@NuevoAprobadorId", DB2Type.Integer) { Value = nuevoAprobadorId });
+            cmd.Parameters.Add(new DB2Parameter("@NuevoCorreoAprobador", DB2Type.VarChar) { Value = nuevoCorreoAprobador });
+            for (var i = 0; i < ids.Count; i++)
+                cmd.Parameters.Add(new DB2Parameter($"@Id{i}", DB2Type.Integer) { Value = ids[i] });
+
+            var affected = await cmd.ExecuteNonQueryAsync();
+            return affected;
+        }
         public async Task<List<SoporteLegalizacionDto>> ObtenerSoportesLegalizacionAsync(int idAnticipo)
         {
             var lista = new List<SoporteLegalizacionDto>();

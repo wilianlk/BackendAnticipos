@@ -8,6 +8,7 @@ using System.Net.Mail;
 using System.Net;
 using BackendAnticipos.Models.Settings;
 using Microsoft.Extensions.Options;
+using BackendAnticipos.Models;
 
 namespace BackendAnticipos.Controllers
 {
@@ -29,6 +30,14 @@ namespace BackendAnticipos.Controllers
             _baseUrl = env.IsDevelopment()
             ? "http://localhost:5173"
             : "http://192.168.20.30:8089";
+        }
+
+        private string GetRootUrl()
+        {
+            if (Request?.Host.HasValue == true)
+                return $"{Request.Scheme}://{Request.Host}";
+
+            return _baseUrl;
         }
 
         [HttpGet("env-check")]
@@ -67,6 +76,17 @@ namespace BackendAnticipos.Controllers
         {
             try
             {
+                if (Request?.Host.HasValue == true &&
+                    Request.Host.Host.Equals("192.168.20.30", StringComparison.OrdinalIgnoreCase) &&
+                    Request.Host.Port == 8089)
+                {
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        message = "El dominio utilizado para esta solicitud no está permitido. Por favor ingrese por el dominio oficial."
+                    });
+                }
+
                 if (dto == null)
                     return BadRequest(new { success = false, message = "Solicitud inválida." });
 
@@ -122,7 +142,7 @@ namespace BackendAnticipos.Controllers
                     if (!string.IsNullOrWhiteSpace(dto.CorreoAprobador))
                         destinatarios.Add("powerapps@recamier.com");
 
-                    await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+                    await EnviarCorreoAsync(dto, GetRootUrl(), destinatarios);
 
                     return Ok(new
                     {
@@ -212,7 +232,7 @@ namespace BackendAnticipos.Controllers
                         .Distinct()
                         .ToList();
 
-                    await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+                    await EnviarCorreoAsync(dto, GetRootUrl(), destinatarios);
 
                     _logger.LogInformation($"Anticipo {idAnticipo} rechazado correctamente y correo enviado.");
                     return Ok(new { success = true, message = "Anticipo rechazado correctamente." });
@@ -258,7 +278,7 @@ namespace BackendAnticipos.Controllers
                                 .Distinct()
                                 .ToList();
 
-                        await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+                        await EnviarCorreoAsync(dto, GetRootUrl(), destinatarios);
 
                         _logger.LogInformation($"Anticipo {idAnticipo} aprobado correctamente y correo enviado.");
                     }
@@ -385,7 +405,7 @@ namespace BackendAnticipos.Controllers
                                 .Distinct()
                                 .ToList();
 
-                        await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+                        await EnviarCorreoAsync(dto, GetRootUrl(), destinatarios);
 
                         _logger.LogInformation("Correo de notificación enviado para estado 'PENDIENTE DE PAGO'.");
                     }
@@ -405,7 +425,7 @@ namespace BackendAnticipos.Controllers
                                 .Distinct()
                                 .ToList();
 
-                        await EnviarCorreoAsync(dto, _baseUrl, destinatarios);
+                        await EnviarCorreoAsync(dto, GetRootUrl(), destinatarios);
 
                         _logger.LogInformation("Correo de notificación enviado para estado 'FINALIZADO'.");
                     }
@@ -531,7 +551,7 @@ namespace BackendAnticipos.Controllers
                                 .Distinct()
                                 .ToList();
 
-                        await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
+                        await EnviarCorreoAsync(anticipo, GetRootUrl(), destinatarios);
                     }
                     else
                     {
@@ -638,7 +658,7 @@ namespace BackendAnticipos.Controllers
                             .Distinct()
                             .ToList();
 
-                        await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
+                        await EnviarCorreoAsync(anticipo, GetRootUrl(), destinatarios);
                         _logger.LogInformation("Correo de notificación enviado para estado 'RECHAZADO POR LEGALIZACION'.");
 
                         return Ok(new { success = true, message = "Anticipo rechazado por legalización." });
@@ -747,7 +767,7 @@ namespace BackendAnticipos.Controllers
                             .Distinct()
                             .ToList();
 
-                        await EnviarCorreoAsync(anticipo, _baseUrl, destinatarios);
+                        await EnviarCorreoAsync(anticipo, GetRootUrl(), destinatarios);
                         _logger.LogInformation("Correo de notificación enviado para estado 'FINALIZADO'.");
                     }
 
@@ -1111,6 +1131,61 @@ namespace BackendAnticipos.Controllers
             );
 
             return Ok(new { success = true, message = "Motivo de rechazo actualizado correctamente." });
+        }
+
+        [HttpPost("reasignar-aprobador")]
+        public async Task<IActionResult> ReasignarAprobador([FromBody] ReasignarAprobadorRequest request)
+        {
+            if (request == null)
+                return BadRequest(new { success = false, message = "Solicitud inválida." });
+
+            if (request.IdsAnticipo == null || request.IdsAnticipo.Count == 0)
+                return BadRequest(new { success = false, message = "Debe enviar al menos un id de anticipo." });
+
+            if (request.NuevoAprobadorId <= 0)
+                return BadRequest(new { success = false, message = "Nuevo aprobador inválido." });
+
+            if (string.IsNullOrWhiteSpace(request.NuevoCorreoAprobador))
+                return BadRequest(new { success = false, message = "Nuevo correo aprobador inválido." });
+
+            if (!int.TryParse(Request.Headers["X-User-Id"].FirstOrDefault(), out var idUsuarioActual) || idUsuarioActual <= 0)
+                return Unauthorized(new { success = false, message = "Falta X-User-Id válido." });
+
+            var rol = await _informixService.ObtenerRolUsuarioAsync(idUsuarioActual);
+            if (rol != 1)
+                return Forbid();
+
+            var affected = await _informixService.ReasignarAprobadorAnticiposAsync(
+                request.IdsAnticipo,
+                request.NuevoAprobadorId,
+                request.NuevoCorreoAprobador);
+
+            if (request.ReenviarCorreo)
+            {
+                foreach (var id in request.IdsAnticipo.Distinct())
+                {
+                    try
+                    {
+                        var dto = await _informixService.ConsultarSolicitudAnticipoPorIdAsync(id);
+                        dto.AprobadorId = request.NuevoAprobadorId;
+                        dto.CorreoAprobador = request.NuevoCorreoAprobador.Trim();
+
+                        var destinatarios = new List<string>();
+                        if (!string.IsNullOrWhiteSpace(dto.CorreoSolicitante))
+                            destinatarios.Add(dto.CorreoSolicitante);
+                        destinatarios.Add(dto.CorreoAprobador);
+                        destinatarios.Add("powerapps@recamier.com");
+
+                        await EnviarCorreoAsync(dto, GetRootUrl(), destinatarios);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error reenviando correo al reasignar aprobador. IdAnticipo {IdAnticipo}", id);
+                    }
+                }
+            }
+
+            return Ok(new { success = true, afectados = affected });
         }
 
     }

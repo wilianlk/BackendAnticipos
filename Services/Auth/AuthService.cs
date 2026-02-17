@@ -1,6 +1,7 @@
 ﻿using IBM.Data.Db2;
 using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Hosting;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -18,18 +19,24 @@ namespace BackendAnticipos.Services.Auth
                 : configuration.GetConnectionString("InformixConnectionProduction");
         }
 
-        public async Task<(bool IsValid, List<string> Roles, int? IdUsuario, string Usuario)> ValidarUsuarioAsync(string correo, string password)
+        public async Task<(bool IsValid, List<string> Roles, int? IdUsuario, string Usuario, string Correo)>
+            ValidarUsuarioAsync(string correo, string password)
         {
-            if (string.IsNullOrWhiteSpace(correo) || !correo.Trim().ToLower().EndsWith("@recamier.com"))
-                return (false, null, null, null);
+            correo = correo?.Trim();
+            password = password?.Trim();
 
-            // Usar ? para parámetros en Informix
+            if (string.IsNullOrWhiteSpace(correo) || !correo.ToLowerInvariant().EndsWith("@recamier.com"))
+                return (false, new List<string>(), null, null, null);
+
+            if (string.IsNullOrWhiteSpace(password))
+                return (false, new List<string>(), null, null, null);
+
             const string sql = @"
-        SELECT u.id_usuario, u.usuario, r.nombre_rol
-        FROM usuarios_anticipo u
-        JOIN usuario_rol_anticipo ur ON u.id_usuario = ur.id_usuario
-        JOIN roles_anticipos r ON ur.id_rol = r.id_rol
-        WHERE TRIM(u.correo) = ? AND TRIM(u.clave) = ?";
+                SELECT u.id_usuario, u.usuario, u.correo, r.nombre_rol
+                FROM usuarios_anticipo u
+                JOIN usuario_rol_anticipo ur ON u.id_usuario = ur.id_usuario
+                JOIN roles_anticipos r ON ur.id_rol = r.id_rol
+                WHERE TRIM(u.correo) = ? AND TRIM(u.clave) = ?";
 
             try
             {
@@ -42,130 +49,119 @@ namespace BackendAnticipos.Services.Auth
                 cmd.Parameters.Add(new DB2Parameter { Value = password });
 
                 using var reader = await cmd.ExecuteReaderAsync();
-                List<string> roles = new();
+
+                var roles = new List<string>();
                 int? idUsuario = null;
                 string usuario = null;
+                string correoDb = null;
 
                 while (await reader.ReadAsync())
                 {
                     idUsuario = Convert.ToInt32(reader["id_usuario"]);
-                    usuario = reader["usuario"]?.ToString().Trim();
-                    var rol = reader["nombre_rol"]?.ToString().Trim();
+                    usuario = reader["usuario"]?.ToString()?.Trim();
+                    correoDb = reader["correo"]?.ToString()?.Trim();
+                    var rol = reader["nombre_rol"]?.ToString()?.Trim();
                     if (!string.IsNullOrEmpty(rol))
-                        roles.Add(char.ToUpper(rol[0]) + rol.Substring(1).ToLower());
+                        roles.Add(char.ToUpperInvariant(rol[0]) + rol.Substring(1).ToLowerInvariant());
                 }
 
                 if (idUsuario.HasValue && roles.Count > 0)
-                    return (true, roles, idUsuario, usuario);
+                    return (true, roles, idUsuario, usuario, correoDb);
 
-                return (false, null, null, null);
+                return (false, new List<string>(), null, null, null);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error al validar usuario: {ex.Message}");
-                return (false, null, null, null);
+                Log.Error(ex, "Error al validar usuario con correo: {Correo}", correo);
+                return (false, new List<string>(), null, null, null);
             }
         }
-        public async Task<bool> RegistrarUsuarioAsync(string usuario, string password, List<string> roles, string correo, string area = "SIN_AREA")
+
+        public async Task<(bool IsValid, List<string> Roles, int? IdUsuario, string Usuario, string Correo)>
+            ValidarUsuarioPorSsoCodeAsync(string code)
         {
-            if (string.IsNullOrWhiteSpace(correo) ||
-                !correo.Trim().ToLower().EndsWith("@recamier.com") ||
-                string.IsNullOrWhiteSpace(usuario))
+            code = code?.Trim();
+
+            Log.Information("[SSO] Iniciando validación con code: {Code}", code?[..Math.Min(10, code?.Length ?? 0)] + "...");
+
+            if (string.IsNullOrWhiteSpace(code))
             {
-                return false;
+                Log.Warning("[SSO] Code vacío o nulo");
+                return (false, new List<string>(), null, null, null);
             }
 
-            const string checkSql = @"
-            SELECT COUNT(*) 
-            FROM usuarios_anticipo
-            WHERE TRIM(correo) = @Correo OR TRIM(usuario) = @Usuario";
+            const string sqlCode = @"
+                SELECT TRIM(usuario_cedula)
+                FROM sirii_sso_codes
+                WHERE code = ?
+                  AND consumed_at_utc IS NULL
+                  AND expires_at_utc > CURRENT
+            ";
 
-            const string insertSql = @"
-            INSERT INTO usuarios_anticipo (usuario, clave, correo, area, id_rol)
-            VALUES (@Usuario, @Password, @Correo, @Area, @IdRol)";
-
-            const string getUserIdSql = @"
-            SELECT id_usuario FROM usuarios_anticipo
-            WHERE TRIM(usuario) = @Usuario AND TRIM(correo) = @Correo";
-
-            const string getRolIdSql = @"
-            SELECT id_rol 
-            FROM roles_anticipos
-            WHERE TRIM(nombre_rol) = @Rol";
-
-            const string insertUserRolSql = @"
-            INSERT INTO usuario_rol_anticipo (id_usuario, id_rol)
-            VALUES (@IdUsuario, @IdRol)";
+            const string sqlUsuarioRoles = @"
+                SELECT u.id_usuario, u.usuario, u.correo, r.nombre_rol
+                FROM usuarios_anticipo u
+                JOIN usuario_rol_anticipo ur ON u.id_usuario = ur.id_usuario
+                JOIN roles_anticipos r ON ur.id_rol = r.id_rol
+                WHERE TRIM(u.clave) = ?";
 
             try
             {
                 using var conn = new DB2Connection(_connectionString);
                 await conn.OpenAsync();
+                Log.Information("[SSO] Conexión a BD exitosa");
 
-                // Verificar si el correo o usuario existen
-                using var checkCmd = conn.CreateCommand();
-                checkCmd.CommandText = checkSql;
-                checkCmd.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo });
-                checkCmd.Parameters.Add(new DB2Parameter("@Usuario", DB2Type.VarChar) { Value = usuario });
-                var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
-                if (count > 0)
+                string cedula;
+                using (var cmd = conn.CreateCommand())
                 {
-                    // Usuario o correo ya existe
-                    return false;
+                    cmd.CommandText = sqlCode;
+                    cmd.Parameters.Add(new DB2Parameter { Value = code });
+                    cedula = (await cmd.ExecuteScalarAsync())?.ToString()?.Trim();
                 }
 
-                // SIEMPRE usar el rol USUARIO
-                int idRol;
-                using (var getRolCmd = conn.CreateCommand())
+                if (string.IsNullOrWhiteSpace(cedula))
                 {
-                    getRolCmd.CommandText = getRolIdSql;
-                    getRolCmd.Parameters.Add(new DB2Parameter("@Rol", DB2Type.VarChar) { Value = "Usuario" });
-                    var idRolObj = await getRolCmd.ExecuteScalarAsync();
-                    if (idRolObj == null)
-                        throw new Exception("El rol 'USUARIO' no existe.");
-                    idRol = Convert.ToInt32(idRolObj);
+                    Log.Warning("[SSO] Code no encontrado, ya consumido, o expirado. Code: {Code}", code);
+                    return (false, new List<string>(), null, null, null);
                 }
 
-                // Insertar usuario incluyendo id_rol
-                using var insertCmd = conn.CreateCommand();
-                insertCmd.CommandText = insertSql;
-                insertCmd.Parameters.Add(new DB2Parameter("@Usuario", DB2Type.VarChar) { Value = usuario });
-                insertCmd.Parameters.Add(new DB2Parameter("@Password", DB2Type.VarChar) { Value = password });
-                insertCmd.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo });
-                insertCmd.Parameters.Add(new DB2Parameter("@Area", DB2Type.Char) { Value = area ?? "SIN_AREA" });
-                insertCmd.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
-                var result = await insertCmd.ExecuteNonQueryAsync();
-                if (result <= 0)
-                    return false;
+                Log.Information("[SSO] Cédula encontrada: {Cedula}", cedula);
 
-                // Obtener id_usuario recién insertado
-                int idUsuario;
-                using (var getUserIdCmd = conn.CreateCommand())
+                using var cmdUsuario = conn.CreateCommand();
+                cmdUsuario.CommandText = sqlUsuarioRoles;
+                cmdUsuario.Parameters.Add(new DB2Parameter { Value = cedula });
+
+                using var reader = await cmdUsuario.ExecuteReaderAsync();
+
+                var roles = new List<string>();
+                int? idUsuario = null;
+                string usuario = null;
+                string correoDb = null;
+
+                while (await reader.ReadAsync())
                 {
-                    getUserIdCmd.CommandText = getUserIdSql;
-                    getUserIdCmd.Parameters.Add(new DB2Parameter("@Usuario", DB2Type.VarChar) { Value = usuario });
-                    getUserIdCmd.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo });
-                    var idObj = await getUserIdCmd.ExecuteScalarAsync();
-                    if (idObj == null)
-                        return false;
-                    idUsuario = Convert.ToInt32(idObj);
+                    idUsuario = Convert.ToInt32(reader["id_usuario"]);
+                    usuario = reader["usuario"]?.ToString()?.Trim();
+                    correoDb = reader["correo"]?.ToString()?.Trim();
+                    var rol = reader["nombre_rol"]?.ToString()?.Trim();
+                    if (!string.IsNullOrEmpty(rol))
+                        roles.Add(char.ToUpperInvariant(rol[0]) + rol.Substring(1).ToLowerInvariant());
                 }
 
-                // Insertar asociación usuario-rol (solo con el rol USUARIO)
-                using (var insertUserRolCmd = conn.CreateCommand())
+                if (!idUsuario.HasValue || roles.Count == 0)
                 {
-                    insertUserRolCmd.CommandText = insertUserRolSql;
-                    insertUserRolCmd.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
-                    insertUserRolCmd.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
-                    await insertUserRolCmd.ExecuteNonQueryAsync();
+                    Log.Warning("[SSO] Usuario no encontrado o sin roles. Clave: {Clave}, IdUsuario: {IdUsuario}, Roles: {RolesCount}",
+                        cedula, idUsuario, roles.Count);
+                    return (false, new List<string>(), null, null, null);
                 }
 
-                return true;
+                Log.Information("[SSO] Login exitoso. Usuario: {Usuario}, Roles: {Roles}", usuario, string.Join(", ", roles));
+                return (true, roles, idUsuario, usuario, correoDb);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error al registrar usuario: {ex.Message}");
-                return false;
+                Log.Error(ex, "[SSO] Error al validar código SSO");
+                return (false, new List<string>(), null, null, null);
             }
         }
     }
