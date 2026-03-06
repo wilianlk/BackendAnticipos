@@ -1079,6 +1079,171 @@ namespace BackendAnticipos.Services
 
             return lista;
         }
+        public async Task<List<Aprobador>> ObtenerAprobadoresAsync(bool? activo = null)
+        {
+            var lista = new List<Aprobador>();
+
+            var sql = @"
+            SELECT
+                id_aprobador,
+                cargo,
+                nombre,
+                correo,
+                activo
+            FROM aprobadores_anticipos
+            /**WHERE_CLAUSE**/
+            ORDER BY cargo, nombre";
+
+            string whereClause = string.Empty;
+            if (activo.HasValue)
+                whereClause = "WHERE activo = @Activo";
+
+            sql = sql.Replace("/**WHERE_CLAUSE**/", whereClause);
+
+            await using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            if (activo.HasValue)
+            {
+                cmd.Parameters.Add(new DB2Parameter("@Activo", DB2Type.SmallInt)
+                {
+                    Value = activo.Value ? 1 : 0
+                });
+            }
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                lista.Add(new Aprobador
+                {
+                    IdAprobador = reader.GetInt32(0),
+                    Cargo = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                    Nombre = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim(),
+                    Correo = reader.IsDBNull(3) ? string.Empty : reader.GetString(3).Trim(),
+                    Activo = !reader.IsDBNull(4) && Convert.ToInt32(reader.GetValue(4)) == 1
+                });
+            }
+
+            return lista;
+        }
+        public async Task<Aprobador?> ObtenerAprobadorPorIdAsync(int idAprobador)
+        {
+            const string sql = @"
+            SELECT
+                id_aprobador,
+                cargo,
+                nombre,
+                correo,
+                activo
+            FROM aprobadores_anticipos
+            WHERE id_aprobador = @IdAprobador";
+
+            await using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@IdAprobador", DB2Type.Integer) { Value = idAprobador });
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                return new Aprobador
+                {
+                    IdAprobador = reader.GetInt32(0),
+                    Cargo = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                    Nombre = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim(),
+                    Correo = reader.IsDBNull(3) ? string.Empty : reader.GetString(3).Trim(),
+                    Activo = !reader.IsDBNull(4) && Convert.ToInt32(reader.GetValue(4)) == 1
+                };
+            }
+
+            return null;
+        }
+        public async Task<int> CrearAprobadorAsync(string cargo, string nombre, string correo)
+        {
+            const string sql = @"
+            INSERT INTO aprobadores_anticipos (
+                cargo,
+                nombre,
+                correo,
+                activo,
+                fecha_creacion,
+                fecha_actualizacion
+            ) VALUES (
+                @Cargo,
+                @Nombre,
+                LOWER(TRIM(@Correo)),
+                1,
+                CURRENT YEAR TO SECOND,
+                CURRENT YEAR TO SECOND
+            )";
+
+            const string identitySql =
+                "SELECT DBINFO('sqlca.sqlerrd1') FROM systables WHERE tabid = 1";
+
+            await using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@Cargo", DB2Type.VarChar) { Value = cargo.Trim() });
+            cmd.Parameters.Add(new DB2Parameter("@Nombre", DB2Type.VarChar) { Value = nombre.Trim() });
+            cmd.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo.Trim() });
+
+            await cmd.ExecuteNonQueryAsync();
+
+            await using var identityCmd = conn.CreateCommand();
+            identityCmd.CommandText = identitySql;
+            var result = await identityCmd.ExecuteScalarAsync();
+
+            return Convert.ToInt32(result);
+        }
+        public async Task<bool> ActualizarAprobadorAsync(int idAprobador, string cargo, string nombre, string correo, bool activo)
+        {
+            const string sql = @"
+            UPDATE aprobadores_anticipos
+            SET
+                cargo = @Cargo,
+                nombre = @Nombre,
+                correo = LOWER(TRIM(@Correo)),
+                activo = @Activo,
+                fecha_actualizacion = CURRENT YEAR TO SECOND
+            WHERE id_aprobador = @IdAprobador";
+
+            await using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@Cargo", DB2Type.VarChar) { Value = cargo.Trim() });
+            cmd.Parameters.Add(new DB2Parameter("@Nombre", DB2Type.VarChar) { Value = nombre.Trim() });
+            cmd.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo.Trim() });
+            cmd.Parameters.Add(new DB2Parameter("@Activo", DB2Type.SmallInt) { Value = activo ? 1 : 0 });
+            cmd.Parameters.Add(new DB2Parameter("@IdAprobador", DB2Type.Integer) { Value = idAprobador });
+
+            var result = await cmd.ExecuteNonQueryAsync();
+            return result > 0;
+        }
+        public async Task<bool> EliminarAprobadorAsync(int idAprobador)
+        {
+            const string sql = @"
+            DELETE FROM aprobadores_anticipos
+            WHERE id_aprobador = @IdAprobador";
+
+            await using var conn = new DB2Connection(_connectionString);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new DB2Parameter("@IdAprobador", DB2Type.Integer) { Value = idAprobador });
+
+            var result = await cmd.ExecuteNonQueryAsync();
+            return result > 0;
+        }
         public async Task<bool> ActualizarMotivoRechazoAsync(int idAnticipo, string motivo, string estado)
         {
             try

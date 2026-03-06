@@ -172,6 +172,8 @@ namespace BackendAnticipos.Services.Auth
             correo = correo?.Trim();
             password = password?.Trim();
             area = area?.Trim();
+            if (string.IsNullOrWhiteSpace(area))
+                area = "GENERAL";
 
             if (string.IsNullOrWhiteSpace(usuario))
                 return (false, "El usuario es obligatorio.", null, null, null, new List<string>());
@@ -212,8 +214,8 @@ namespace BackendAnticipos.Services.Auth
                 }
 
                 const string sqlInsertUsuario = @"
-                    INSERT INTO usuarios_anticipo (usuario, correo, clave, id_rol)
-                    VALUES (@Usuario, @Correo, @Clave, @IdRol)";
+                    INSERT INTO usuarios_anticipo (usuario, correo, clave, id_rol, area)
+                    VALUES (@Usuario, @Correo, @Clave, @IdRol, @Area)";
 
                 await using (var cmdInsert = conn.CreateCommand())
                 {
@@ -223,6 +225,7 @@ namespace BackendAnticipos.Services.Auth
                     cmdInsert.Parameters.Add(new DB2Parameter("@Correo", DB2Type.VarChar) { Value = correo });
                     cmdInsert.Parameters.Add(new DB2Parameter("@Clave", DB2Type.VarChar) { Value = password });
                     cmdInsert.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
+                    cmdInsert.Parameters.Add(new DB2Parameter("@Area", DB2Type.VarChar) { Value = area });
                     await cmdInsert.ExecuteNonQueryAsync();
                 }
 
@@ -242,20 +245,30 @@ namespace BackendAnticipos.Services.Auth
                     idUsuario = Convert.ToInt32(identityObj);
                 }
 
-                const string sqlInsertUsuarioRol = @"
-                    INSERT INTO usuario_rol_anticipo (id_usuario, id_rol)
-                    SELECT @IdUsuario, @IdRol
-                    FROM systables
-                    WHERE tabid = 1
-                      AND NOT EXISTS (
-                        SELECT 1
-                        FROM usuario_rol_anticipo
-                        WHERE id_usuario = @IdUsuario
-                          AND id_rol = @IdRol
-                    )";
+                const string sqlExisteRelacion = @"
+                    SELECT FIRST 1 1
+                    FROM usuario_rol_anticipo
+                    WHERE id_usuario = @IdUsuario
+                      AND id_rol = @IdRol";
 
-                await using (var cmdInsertRel = conn.CreateCommand())
+                bool relacionExiste;
+                await using (var cmdExisteRel = conn.CreateCommand())
                 {
+                    cmdExisteRel.Transaction = tx;
+                    cmdExisteRel.CommandText = sqlExisteRelacion;
+                    cmdExisteRel.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
+                    cmdExisteRel.Parameters.Add(new DB2Parameter("@IdRol", DB2Type.Integer) { Value = idRol });
+                    var existeObj = await cmdExisteRel.ExecuteScalarAsync();
+                    relacionExiste = existeObj != null && existeObj != DBNull.Value;
+                }
+
+                if (!relacionExiste)
+                {
+                    const string sqlInsertUsuarioRol = @"
+                        INSERT INTO usuario_rol_anticipo (id_usuario, id_rol)
+                        VALUES (@IdUsuario, @IdRol)";
+
+                    await using var cmdInsertRel = conn.CreateCommand();
                     cmdInsertRel.Transaction = tx;
                     cmdInsertRel.CommandText = sqlInsertUsuarioRol;
                     cmdInsertRel.Parameters.Add(new DB2Parameter("@IdUsuario", DB2Type.Integer) { Value = idUsuario });
